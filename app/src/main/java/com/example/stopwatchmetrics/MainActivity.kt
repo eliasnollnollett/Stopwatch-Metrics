@@ -2405,40 +2405,73 @@ fun MainScreen(
                                     .padding(horizontal = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                // toggle “show comment column”
-                                IconButton(onClick = {
-                                    // invert the two settings so that the column appears immediately
-                                    val newSettings = sheetSettings.copy(
-                                        showComment      = !sheetSettings.showComment,
-                                        showEmptyComment = true
-                                    )
-                                    // persist immediately
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        saveSheetSettings(context, newSettings)
-                                    }
-                                }) {
-                                    Icon(Icons.Filled.Edit,
+                                // Toggle Comments
+                                IconButton(
+                                    onClick = {
+                                        val newSettings = sheetSettings.copy(
+                                            showComment      = !sheetSettings.showComment,
+                                            showEmptyComment = true
+                                        )
+                                        CoroutineScope(Dispatchers.IO).launch {
+                                            saveSheetSettings(context, newSettings)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .size(48.dp)                          // make the touch target big enough
+                                        .clip(CircleShape)                    // clip to circle
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (sheetSettings.showComment)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onBackground,
+                                            shape = CircleShape
+                                        )
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Edit,
                                         contentDescription = "Toggle Comments",
-                                        tint = if (sheetSettings.showComment) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onBackground)
+                                        tint = if (sheetSettings.showComment)
+                                            MaterialTheme.colorScheme.primary
+                                        else
+                                            MaterialTheme.colorScheme.onBackground
+                                    )
                                 }
 
-                                // toggle “show image column”
-                                IconButton(onClick = {
-                                    val newSettings = sheetSettings.copy(
-                                        showImage      = !sheetSettings.showImage,
-                                        showEmptyImage = true
-                                    )
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        saveSheetSettings(context, newSettings)
-                                    }
-                                }) {
-                                    Icon(Icons.Filled.CameraAlt,
+                                // Toggle Images
+                                IconButton(
+                                    onClick = {
+                                        val newSettings = sheetSettings.copy(
+                                            showImage      = !sheetSettings.showImage,
+                                            showEmptyImage = true
+                                        )
+                                        CoroutineScope(Dispatchers.IO).launch {
+                                            saveSheetSettings(context, newSettings)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (sheetSettings.showImage)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onBackground,
+                                            shape = CircleShape
+                                        )
+                                ) {
+                                    Icon(
+                                        Icons.Filled.CameraAlt,
                                         contentDescription = "Toggle Images",
-                                        tint = if (sheetSettings.showImage) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onBackground)
+                                        tint = if (sheetSettings.showImage)
+                                            MaterialTheme.colorScheme.primary
+                                        else
+                                            MaterialTheme.colorScheme.onBackground
+                                    )
                                 }
                             }
+
 
                             Spacer(Modifier.height(16.dp))
 
