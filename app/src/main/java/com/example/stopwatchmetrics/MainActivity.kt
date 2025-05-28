@@ -803,49 +803,6 @@ fun ImageCaptureDialog(
 }
 
 @Composable
-fun VolumeInstructionColumn(
-    icon: ImageVector,
-    label: String,
-    tapInstruction: String,
-    holdInstruction: String,
-    modifier: Modifier = Modifier,
-    iconSize: Dp = 48.dp  // default size, customizable
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            modifier = Modifier.size(iconSize),
-            tint = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Tap: $tapInstruction",
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = "Hold and release: $holdInstruction",
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-    }
-}
-
-@Composable
 fun PointTable(
     points: List<PointData>,
     currentActivePoint: PointData?,
@@ -2320,12 +2277,9 @@ fun MainScreen(
                                         .size(48.dp)                          // make the touch target big enough
                                         .clip(CircleShape)                    // clip to circle
                                         .border(
-                                            width = 1.dp,
-                                            color = if (sheetSettings.showComment)
-                                                MaterialTheme.colorScheme.primary
-                                            else
-                                                MaterialTheme.colorScheme.onBackground,
-                                            shape = CircleShape
+                                            1.dp,
+                                            if (sheetSettings.showComment) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            CircleShape
                                         )
                                 ) {
                                     Icon(
@@ -2353,12 +2307,9 @@ fun MainScreen(
                                         .size(48.dp)
                                         .clip(CircleShape)
                                         .border(
-                                            width = 1.dp,
-                                            color = if (sheetSettings.showImage)
-                                                MaterialTheme.colorScheme.primary
-                                            else
-                                                MaterialTheme.colorScheme.onBackground,
-                                            shape = CircleShape
+                                            1.dp,
+                                            if (sheetSettings.showImage) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            CircleShape
                                         )
                                 ) {
                                     Icon(
