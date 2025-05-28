@@ -2388,19 +2388,25 @@ fun MainScreen(
                     // ─── PAGE 2: graph + timer + table ───────────────────────────────────────────
                     {
                         Column(
-                            Modifier.fillMaxSize().padding(16.dp),
+                            Modifier
+                                .fillMaxSize()
+                                .padding(top = 16.dp, bottom = 16.dp),   // only vertical padding here
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             GraphPreview(
-                                points   = displayPoints,
+                                points = displayPoints,
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    .fillMaxWidth()                           // now full width
+                                    .padding(horizontal = 16.dp)              // horizontal inset only for the graph
                                     .height(120.dp)
                             )
                             Spacer(Modifier.height(12.dp))
-                            Text(formatTime(elapsedTime, timeFormatSetting),
+
+                            Text(
+                                formatTime(elapsedTime, timeFormatSetting),
                                 fontSize = 28.sp,
-                                color    = MaterialTheme.colorScheme.onBackground)
+                                color   = MaterialTheme.colorScheme.onBackground
+                            )
 
                             Spacer(Modifier.height(12.dp))
                             Column(
@@ -2427,7 +2433,7 @@ fun MainScreen(
                                 onCommentClick        = { selectedPointForComment = it },
                                 onImageClick          = { onImageClick(it) },
                                 onAddCommentForLive   = onAddComment,
-                                onCaptureImageForLive = onCaptureImage
+                                onCaptureImageForLive = onCaptureImage,
                             )
                         }
                     }
@@ -2541,10 +2547,6 @@ fun MainScreen(
             }
         )
     }
-
-
-
-
 }
 
 
