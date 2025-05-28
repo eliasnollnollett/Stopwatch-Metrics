@@ -63,8 +63,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.automirrored.filled.VolumeDown
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -848,31 +846,6 @@ fun VolumeInstructionColumn(
 }
 
 @Composable
-fun VolumeInstructions() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        VolumeInstructionColumn(
-            icon = Icons.AutoMirrored.Filled.VolumeUp,
-            label = "Volume Up",
-            tapInstruction = "Start/Pause",
-            holdInstruction = "Save",
-            modifier = Modifier.weight(1f),
-            iconSize = 36.dp  // Smaller than the default 48.dp
-        )
-        VolumeInstructionColumn(
-            icon = Icons.AutoMirrored.Filled.VolumeDown,
-            label = "Volume Down",
-            tapInstruction = "New Point",
-            holdInstruction = "Reset",
-            modifier = Modifier.weight(1f),
-            iconSize = 36.dp  // Smaller than the default 48.dp
-        )
-    }
-}
-
-@Composable
 fun PointTable(
     points: List<PointData>,
     currentActivePoint: PointData?,
@@ -1525,30 +1498,6 @@ fun FastCommentsEditDialog(
 }
 
 @Composable
-fun TimeFormatSettingsRow(
-    timeFormatSetting: TimeFormatSetting,
-    onTimeFormatChange: (TimeFormatSetting) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),                   // no padding here
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "Use short time format (ss.00)",
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge      // or bodyMedium if you’d rather match exactly
-        )
-        Switch(
-            checked = timeFormatSetting.useShortFormat,
-            onCheckedChange = { checked ->
-                onTimeFormatChange(TimeFormatSetting(checked))
-                // … your DataStore save logic …
-            }
-        )
-    }
-}
-
-@Composable
 fun SettingsRow(
     label: String,
     checked: Boolean,
@@ -2033,61 +1982,9 @@ fun TouchVolumeButton(
 
 
 
-@Composable
-fun ExtraActionsRow(
-    onCaptureImage: () -> Unit,
-    onAddComment: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        IconButton(
-            onClick = onCaptureImage,
-            modifier = Modifier.size(48.dp) // Larger touch target for the camera button
-        ) {
-            Icon(
-                imageVector = Icons.Filled.CameraAlt,
-                contentDescription = "Capture Image",
-                modifier = Modifier.size(30.dp) // Adjust the icon size as needed
-            )
-        }
-        IconButton(
-            onClick = onAddComment,
-            modifier = Modifier.size(48.dp) // Larger touch target for the comment button
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Edit,
-                contentDescription = "Add Comment",
-                modifier = Modifier.size(30.dp) // Adjust the icon size as needed
-            )
-        }
-    }
-}
 
-@Composable
-fun PageIndicator(
-    currentPage: Int,
-    totalPages: Int = 3,
-    modifier: Modifier = Modifier,
-    dotSize: Dp = 8.dp,
-    spacing: Dp = 4.dp
-) {
-    Row(modifier = modifier) {
-        for (i in 0 until totalPages) {
-            Box(
-                Modifier
-                    .size(dotSize)
-                    .background(
-                        color = if (i == currentPage) MaterialTheme.colorScheme.primary else Color.Transparent,
-                        shape = CircleShape
-                    )
-                    .border(1.dp, MaterialTheme.colorScheme.primary, CircleShape)
-            )
-            if (i < totalPages - 1) Spacer(Modifier.width(spacing))
-        }
-    }
-}
+
+
 
 @Composable
 fun ThreePageSwipeContainer(
@@ -2256,9 +2153,6 @@ fun MainScreen(
                     }
                 }
             }
-
-            //trying out a change
-
 
             Spacer(Modifier.height(8.dp))
 
