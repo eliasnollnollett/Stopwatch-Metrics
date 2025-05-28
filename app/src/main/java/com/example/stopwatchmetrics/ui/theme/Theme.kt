@@ -15,26 +15,34 @@ fun Color.darken(fraction: Float)  = lerp(this, Color.Black, fraction)
 private val LightColors = run {
     val onBg = Color.Black
     lightColorScheme(
-        primary      = Color.Black,
-        onPrimary    = Color.White,
-        background   = Color.White,
-        onBackground = onBg,
-        surface      = onBg.lighten(0.7f),
-        onSurface    = Color.White,
-        // …other slots…
+        primary           = onBg,                    // Text/icons in most places
+        onPrimary         = Color.White,
+        secondary         = onBg.lighten(0.2f),      // subtle accent
+        onSecondary       = Color.White,
+        background        = Color.White,
+        onBackground      = onBg,
+        surface           = onBg.lighten(0.7f),      // your existing “surface”
+        onSurface         = Color.White,
+        surfaceVariant    = onBg.lighten(0.85f),     // cards, buttons, etc.
+        onSurfaceVariant  = onBg,
+        outline           = onBg.lighten(0.5f)       // borders, dividers
     )
 }
 
 private val DarkColors = run {
     val onBg = Color.White
     darkColorScheme(
-        primary      = Color.White,
-        onPrimary    = Color.Black,
-        background   = Color.Black,
-        onBackground = onBg,
-        surface      = onBg.darken(0.7f),
-        onSurface    = Color.White,
-        // …other slots…
+        primary           = onBg,
+        onPrimary         = Color.Black,
+        secondary         = onBg.darken(0.2f),
+        onSecondary       = Color.Black,
+        background        = Color.Black,
+        onBackground      = onBg,
+        surface           = onBg.darken(0.7f),
+        onSurface         = Color.White,
+        surfaceVariant    = onBg.darken(0.85f),
+        onSurfaceVariant  = onBg,
+        outline           = onBg.darken(0.5f)
     )
 }
 
@@ -44,9 +52,5 @@ fun MyApplicationTheme(
     content: @Composable () -> Unit
 ) {
     val colors = if (useDarkTheme) DarkColors else LightColors
-    MaterialTheme(
-        colorScheme = colors,
-        typography  = Typography(),
-        content     = content
-    )
+    MaterialTheme(colorScheme = colors, typography = Typography(), content = content)
 }

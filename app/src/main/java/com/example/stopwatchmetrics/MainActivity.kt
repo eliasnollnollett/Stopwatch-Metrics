@@ -1659,7 +1659,10 @@ fun CommentDialogUnified(
                                     }
                                     onConfirm(fastComment)
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surface),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor   = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text(text = fastComment, color = MaterialTheme.colorScheme.onBackground)
