@@ -2435,10 +2435,8 @@ fun MainScreen(
                 currentPage   = currentPage,
                 onPageChanged = { currentPage = it }
             )
-
         }
     }
-
 
     // Dialogs:
     when (activeDialog) {
@@ -2498,8 +2496,6 @@ fun MainScreen(
     }
     // inside MainScreen – or wherever you show the tips dialog
 
-
-
     if (showTipsDialog) {
         AlertDialog(
             onDismissRequest = { showTipsDialog = false },
@@ -2509,23 +2505,12 @@ fun MainScreen(
             text = {
                 Column {
 
-                    // the four plain-text bullets
+                    // plain-text bullets
                     Text("• You can use the volume buttons for Play/Pause and New-Point (tap and hold).")
                     Text("• Tweak the layout in Settings to match your preferences.")
                     Text("• Swipe left / right for the three different views.")
                     Text("• In Saved Files you can filter, view, delete or export to Excel.")
-
-                    /* the bullet that contains the true Material icon */
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("• ")                // the bullet itself
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "info",
-                            modifier = Modifier.size(16.dp)   // tweak size if you like
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text("Tap the info icon any time to see this guide again.")
-                    }
+                    Text("• Tap the info icon any time to see this guide again.")
 
                     Spacer(Modifier.height(12.dp))
 
