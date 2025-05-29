@@ -35,10 +35,9 @@ private val SHOW_TMU_KEY                  = booleanPreferencesKey("show_tmu")
 private val SHOW_START_TIME_KEY           = booleanPreferencesKey("show_start_time")
 private val SHOW_COMMENT_KEY              = booleanPreferencesKey("show_comment")
 private val SHOW_IMAGE_KEY                = booleanPreferencesKey("show_image")
-private val SHOW_EMPTY_COMMENT_KEY        = booleanPreferencesKey("show_empty_comment")
-private val SHOW_EMPTY_IMAGE_KEY          = booleanPreferencesKey("show_empty_image")
-private val SHOW_INSTRUCTIONS_KEY         = booleanPreferencesKey("show_instructions")
-private val SHOW_GRAPH_KEY                = booleanPreferencesKey("show_graph")
+//private val SHOW_EMPTY_IMAGE_KEY          = booleanPreferencesKey("show_empty_image")
+//private val SHOW_INSTRUCTIONS_KEY         = booleanPreferencesKey("show_instructions")
+//private val SHOW_GRAPH_KEY                = booleanPreferencesKey("show_graph")
 
 // --- Fast Comments Keys ---
 val FAST_COMMENTS_ENABLED_KEY = booleanPreferencesKey("fast_comments_enabled")
@@ -105,13 +104,13 @@ suspend fun saveSheetSettings(context: Context, sheetSettings: SheetSettings) {
         prefs[SHOW_IMAGE_KEY]         = sheetSettings.showImage
 
         // replaced hide… with showEmpty…
-        prefs[SHOW_EMPTY_COMMENT_KEY] = sheetSettings.showEmptyComment
-        prefs[SHOW_EMPTY_IMAGE_KEY]   = sheetSettings.showEmptyImage
+       // prefs[SHOW_EMPTY_COMMENT_KEY] = sheetSettings.showEmptyComment
+       // prefs[SHOW_EMPTY_IMAGE_KEY]   = sheetSettings.showEmptyImage
 
         // replaced hideInstructions with showInstructions
-        prefs[SHOW_INSTRUCTIONS_KEY]  = sheetSettings.showInstructions
+      //  prefs[SHOW_INSTRUCTIONS_KEY]  = sheetSettings.showInstructions
 
-        prefs[SHOW_GRAPH_KEY]         = sheetSettings.showGraph
+      //  prefs[SHOW_GRAPH_KEY]         = sheetSettings.showGraph
     }
 }
 
@@ -129,11 +128,11 @@ fun readSheetSettings(context: Context): Flow<SheetSettings> =
                 showImage         = prefs[SHOW_IMAGE_KEY]         ?: true,
 
                 // new defaults: false means “don’t force‐show empty”
-                showEmptyComment  = prefs[SHOW_EMPTY_COMMENT_KEY] ?: false,
-                showEmptyImage    = prefs[SHOW_EMPTY_IMAGE_KEY]   ?: false,
-                showInstructions  = prefs[SHOW_INSTRUCTIONS_KEY]  ?: true,
+              //  showEmptyComment  = prefs[SHOW_EMPTY_COMMENT_KEY] ?: false,
+              //  showEmptyImage    = prefs[SHOW_EMPTY_IMAGE_KEY]   ?: false,
+              //  showInstructions  = prefs[SHOW_INSTRUCTIONS_KEY]  ?: true,
 
-                showGraph         = prefs[SHOW_GRAPH_KEY]         ?: false
+              //  showGraph         = prefs[SHOW_GRAPH_KEY]         ?: false
             )
         }
 

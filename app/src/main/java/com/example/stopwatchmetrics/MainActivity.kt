@@ -145,9 +145,6 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 
 // --- Helper Functions & Data Classes ---
 
@@ -190,10 +187,6 @@ data class SheetSettings(
     val showStartTime: Boolean = true,
     val showComment: Boolean = true,
     val showImage: Boolean = true,
-    val showEmptyComment: Boolean = false,
-    val showEmptyImage: Boolean = false,
-    val showInstructions: Boolean = true,
-    val showGraph: Boolean = false
 )
 
 fun generateCSV(
@@ -819,12 +812,8 @@ fun PointTable(
     onCaptureImageForLive: () -> Unit
 ) {
     // decide if we actually show those columns
-    val hasComments = points.any { it.comment.isNotBlank() }
-    val hasImages   = points.any { !it.imagePath.isNullOrEmpty() }
-    val showCommentColumn = sheetSettings.showComment &&
-            (sheetSettings.showEmptyComment || hasComments)
-    val showImageColumn = sheetSettings.showImage &&
-            (sheetSettings.showEmptyImage   || hasImages)
+    val showCommentColumn = sheetSettings.showComment
+    val showImageColumn   = sheetSettings.showImage
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // ─── header row ───
@@ -1242,19 +1231,9 @@ fun SettingsScreen(
                 onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showComment = it)) }
             )
             SettingsRow(
-                label = "Show Comment If Empty",
-                checked = sheetSettings.showEmptyComment,
-                onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showEmptyComment = it)) }
-            )
-            SettingsRow(
                 label = "Show Image",
                 checked = sheetSettings.showImage,
                 onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showImage = it)) }
-            )
-            SettingsRow(
-                label = "Show Image If Empty",
-                checked = sheetSettings.showEmptyImage,
-                onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showEmptyImage = it)) }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -1276,11 +1255,6 @@ fun SettingsScreen(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-            SettingsRow(
-                label = "Show Control Buttons",
-                checked = sheetSettings.showInstructions,
-                onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showInstructions = it)) }
-            )
 
             SettingsRow(
                 label = "Use Dark Theme",
@@ -1292,11 +1266,6 @@ fun SettingsScreen(
                 }
             )
 
-            SettingsRow(
-                label = "Show 2D Line Graph",
-                checked = sheetSettings.showGraph,
-                onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showGraph = it)) }
-            )
 
             SettingsRow(
                 label = "Use short time format (ss.00)",
@@ -2281,8 +2250,7 @@ fun MainScreen(
                                 IconButton(
                                     onClick = {
                                         val newSettings = sheetSettings.copy(
-                                            showComment      = !sheetSettings.showComment,
-                                            showEmptyComment = true
+                                            showComment      = !sheetSettings.showComment
                                         )
                                         CoroutineScope(Dispatchers.IO).launch {
                                             saveSheetSettings(context, newSettings)
@@ -2311,8 +2279,7 @@ fun MainScreen(
                                 IconButton(
                                     onClick = {
                                         val newSettings = sheetSettings.copy(
-                                            showImage      = !sheetSettings.showImage,
-                                            showEmptyImage = true
+                                            showImage      = !sheetSettings.showImage
                                         )
                                         CoroutineScope(Dispatchers.IO).launch {
                                             saveSheetSettings(context, newSettings)
