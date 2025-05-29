@@ -145,6 +145,9 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 // --- Helper Functions & Data Classes ---
 
@@ -178,6 +181,8 @@ data class PointData(
     var comment: String = "",
     var imagePath: String? = null
 )
+
+
 data class SheetSettings(
     val showPoint: Boolean = true,
     val showTime: Boolean = true,
@@ -667,7 +672,7 @@ class CameraActivity : ComponentActivity() {
                         null
                     )
                     // Show the toast for image capture.
-                    Toast.makeText(this@CameraActivity, "Image captured!", Toast.LENGTH_SHORT).show()
+                    //Toast.makeText(this@CameraActivity, "Image captured!", Toast.LENGTH_SHORT).show()
 
                     // Return the image path to the calling activity
                     val resultIntent = Intent().apply {
@@ -1611,9 +1616,9 @@ fun CommentDialogUnified(
                             Button(
                                 onClick = {
                                     // Only show toast if it's not an edit on an old point.
-                                    if (!isEditingOldPoint) {
-                                        ToastHelper.showToast(context, "Fast comment '$fastComment' added", 1000L)
-                                    }
+                                  //  if (!isEditingOldPoint) {
+                                  //      ToastHelper.showToast(context, "Fast comment '$fastComment' added", 1000L)
+                                   // }
                                     onConfirm(fastComment)
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -2036,11 +2041,10 @@ fun MainScreen(
     val stdDevTime   = calculateStdDev(points.map { it.elapsedTime })
     val averageTime  = points.map { it.elapsedTime }.average().toLong()
 
-    // only rebuild when points or the elapsed‐time of the live point changes
+
     val displayPoints by remember(points, currentActivePoint?.pointStartTime, currentActivePoint?.elapsedTime, isRunning) {
         derivedStateOf {
             currentActivePoint?.let { live ->
-                // if it's not already in `points`, show it any time elapsed >0 *or* we're paused
                 if (points.none { it.pointStartTime == live.pointStartTime } &&
                     (live.elapsedTime > 0L || !isRunning)
                 ) {
@@ -2048,6 +2052,17 @@ fun MainScreen(
                 } else points
             } ?: points
         }
+    }
+
+    // only rebuild when points or the elapsed‐time of the live point changes
+    val allPoints = buildList<PointData> {
+        addAll(points)
+        currentActivePoint?.takeIf { live ->
+            // only include the live point if it’s not already in points
+            points.none { it.pointStartTime == live.pointStartTime } &&
+                    // and either some time has elapsed or we’re paused
+                    (live.elapsedTime > 0L || !isRunning)
+        }?.let { add(it) }
     }
 
 
@@ -2327,7 +2342,7 @@ fun MainScreen(
                             Spacer(Modifier.height(16.dp))
 
                             PointTable(
-                                points                = displayPoints,
+                                points = allPoints,
                                 currentActivePoint    = currentActivePoint,
                                 timeFormatSetting     = timeFormatSetting,
                                 sheetSettings         = sheetSettings,
@@ -2380,7 +2395,7 @@ fun MainScreen(
 
                             Spacer(Modifier.height(12.dp))
                             PointTable(
-                                points                = displayPoints,
+                                points = allPoints,
                                 currentActivePoint    = currentActivePoint,
                                 timeFormatSetting     = timeFormatSetting,
                                 sheetSettings         = sheetSettings,
@@ -2515,7 +2530,7 @@ class MainActivity : ComponentActivity() {
 
     private var isDirty by mutableStateOf(false)
 
-    private var currentActivePoint: PointData? = null
+    private var currentActivePoint by mutableStateOf<PointData?>(null)
 
     private lateinit var cameraResultLauncher: ActivityResultLauncher<Intent>
 
@@ -2722,25 +2737,32 @@ class MainActivity : ComponentActivity() {
 
         val activityInstance = this
 
-        cameraResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK) {
-                val imagePath = result.data?.getStringExtra("imagePath")
-                if (!imagePath.isNullOrEmpty()) {
-                    if (activityInstance.pendingImageUpdatePoint != null) {
-                        val pointToUpdate = activityInstance.pendingImageUpdatePoint!!
-                        val index = _points.indexOf(pointToUpdate)
-                        if (index != -1) {
-                            _points[index] = pointToUpdate.copy(imagePath = "file://$imagePath")
+        cameraResultLauncher =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                if (result.resultCode == RESULT_OK) {
+                    val imagePath = result.data?.getStringExtra("imagePath") ?: return@registerForActivityResult
+
+                    if (pendingImageUpdatePoint != null) {
+                        // old point case
+                        val live = pendingImageUpdatePoint!!
+                        val idx  = _points.indexOf(live)
+                        if (idx != -1) {
+                            _points[idx] = live.copy(imagePath = "file://$imagePath")
                         }
-                        activityInstance.pendingImageUpdatePoint = null
+                        pendingImageUpdatePoint = null
+
                     } else if (currentActivePoint != null) {
-                        currentActivePoint!!.imagePath = "file://$imagePath"
+                        // paused live point case
+                        currentActivePoint = currentActivePoint!!.copy(imagePath = "file://$imagePath")
+
                     } else if (_points.isNotEmpty()) {
-                        _points[_points.lastIndex] = _points.last().copy(imagePath = "file://$imagePath")
+                        // fallback: last historical point
+                        val last = _points.last()
+                        _points[_points.lastIndex] = last.copy(imagePath = "file://$imagePath")
                     }
                 }
             }
-        }
+
 
         setContent {
 
@@ -2879,19 +2901,25 @@ class MainActivity : ComponentActivity() {
                                     pendingImageUpdatePoint = point
                                     showImageUpdateDialog = true
                                 },
-                                onUpdatePointImage     = { point, path ->
+                                onUpdatePointComment = { point, newComment ->
                                     val idx = _points.indexOf(point)
                                     if (idx != -1) {
-                                        _points[idx] = point.copy(imagePath = path)
-                                        isDirty = true
+                                        // historical point – replace in the list
+                                        _points[idx] = point.copy(comment = newComment)
+                                    } else if (currentActivePoint?.pointStartTime == point.pointStartTime) {
+                                        // live (paused) point – replace the state var
+                                        currentActivePoint = point.copy(comment = newComment)
                                     }
+                                    isDirty = true
                                 },
-                                onUpdatePointComment   = { point, comment ->
+                                onUpdatePointImage = { point, newPath ->
                                     val idx = _points.indexOf(point)
                                     if (idx != -1) {
-                                        _points[idx] = point.copy(comment = comment)
-                                        isDirty = true
+                                        _points[idx] = point.copy(imagePath = newPath)
+                                    } else if (currentActivePoint?.pointStartTime == point.pointStartTime) {
+                                        currentActivePoint = point.copy(imagePath = newPath)
                                     }
+                                    isDirty = true
                                 }
                             )
                         }
@@ -2955,7 +2983,9 @@ class MainActivity : ComponentActivity() {
                     if (showImageUpdateDialog) {
                         ImageCaptureDialog(
                             onCapture = {
+                                // ① Just kick off the camera
                                 captureImage()
+                                // ② Close the dialog
                                 showImageUpdateDialog = false
                             },
                             onDismiss = {
@@ -2966,24 +2996,33 @@ class MainActivity : ComponentActivity() {
                     }
                     if (showCommentDialog) {
                         CommentDialogUnified(
-                            initialComment = "",
+                            initialComment       = currentActivePoint?.comment.orEmpty(),
                             fastCommentsSettings = currentFastComments,
-                            isEditingOldPoint = false,
+                            isEditingOldPoint    = false,
                             onConfirm = { newComment ->
-                                if (currentActivePoint != null) {
-                                    currentActivePoint!!.comment = if (currentActivePoint!!.comment.isNotBlank())
-                                        currentActivePoint!!.comment + ", " + newComment
-                                    else newComment
-                                } else if (_points.isNotEmpty()) {
-                                    _points.last().comment = if (_points.last().comment.isNotBlank())
-                                        _points.last().comment + ", " + newComment
-                                    else newComment
+                                currentActivePoint?.let { live ->
+                                    val idx = _points.indexOf(live)
+                                    val updatedComment = if (live.comment.isNotBlank())
+                                        "${live.comment}, $newComment"
+                                    else
+                                        newComment
+
+                                    if (idx != -1) {
+                                        // historical point (unlikely here)
+                                        _points[idx] = live.copy(comment = updatedComment)
+                                    } else {
+                                        // paused “live” point
+                                        currentActivePoint = live.copy(comment = updatedComment)
+                                    }
                                 }
                                 showCommentDialog = false
                             },
-                            onDismiss = { showCommentDialog = false }
+                            onDismiss = {
+                                showCommentDialog = false
+                            }
                         )
                     }
+
                     // Confirm Reset dialog
                     if (activeDialog is ActiveDialog.ConfirmReset) {
                         AlertDialog(
