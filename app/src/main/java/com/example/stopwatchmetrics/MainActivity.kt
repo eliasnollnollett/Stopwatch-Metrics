@@ -145,6 +145,8 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
+import androidx.compose.foundation.BorderStroke
+
 
 // --- Helper Functions & Data Classes ---
 
@@ -1247,7 +1249,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Other Settings",
+                text = "Other Settings:",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1280,29 +1282,42 @@ fun SettingsScreen(
                 }
             )
 
-            SettingsRow(
-                label = "Use Fast Comments Window",
-                checked = fastCommentsSettings.enabled,
-                onCheckedChange = { onFastCommentsChange(fastCommentsSettings.copy(enabled = it)) }
-            )
-            Button(
+            Spacer(Modifier.height(8.dp))
+
+            // EDIT FAST COMMENTS
+            OutlinedButton(
                 onClick = { showFastCommentsEditDialog = true },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onBackground),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    contentColor   = MaterialTheme.colorScheme.onBackground
+                )
             ) {
                 Text("Edit Fast Comments")
             }
 
             Spacer(Modifier.height(32.dp))
 
-            Button(
+
+// BUY A COFFEE
+            OutlinedButton(
                 onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/elias_svensson_apps"))
+                    val intent = Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://buymeacoffee.com/elias_svensson_apps")
+                    )
                     context.startActivity(intent)
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onBackground),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    contentColor   = MaterialTheme.colorScheme.onBackground
+                )
             ) {
                 Icon(
-                    imageVector = Icons.Default.LocalCafe,
+                    Icons.Default.LocalCafe,
                     contentDescription = "Coffee Icon",
                     modifier = Modifier.size(24.dp)
                 )
