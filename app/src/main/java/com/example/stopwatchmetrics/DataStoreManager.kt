@@ -8,11 +8,14 @@ import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import android.util.Log
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 
 // Extension property on Context—place this at the file level.
 val Context.dataStore by preferencesDataStore(name = "settings")
 // Time format key (already exists)
 val TIME_FORMAT_KEY = booleanPreferencesKey("time_format_setting")
+
+
 
 // Data class along with companion object for loading from DataStore.
 data class TimeFormatSetting(
@@ -39,8 +42,11 @@ private val SHOW_IMAGE_KEY                = booleanPreferencesKey("show_image")
 //private val SHOW_INSTRUCTIONS_KEY         = booleanPreferencesKey("show_instructions")
 //private val SHOW_GRAPH_KEY                = booleanPreferencesKey("show_graph")
 
+private val FAST_COMMENTS_ENABLED_KEY = booleanPreferencesKey("fast_comments_enabled")
+private val FAST_COMMENTS_LIST_KEY    = stringSetPreferencesKey("fast_comments_list")
+
 // --- Fast Comments Keys ---
-val FAST_COMMENTS_ENABLED_KEY = booleanPreferencesKey("fast_comments_enabled")
+
 val FAST_COMMENT_1_KEY = stringPreferencesKey("fast_comment_1")
 val FAST_COMMENT_2_KEY = stringPreferencesKey("fast_comment_2")
 val FAST_COMMENT_3_KEY = stringPreferencesKey("fast_comment_3")
@@ -68,30 +74,23 @@ fun readTimeFormatSetting(context: Context): Flow<Boolean> {
 }
 
 // Save Fast Comments Settings.
-suspend fun saveFastCommentsSettings(context: Context, fastSettings: FastCommentsSettings) {
-    context.dataStore.edit { settings ->
-        settings[FAST_COMMENTS_ENABLED_KEY] = fastSettings.enabled
-        settings[FAST_COMMENT_1_KEY] = fastSettings.comment1
-        settings[FAST_COMMENT_2_KEY] = fastSettings.comment2
-        settings[FAST_COMMENT_3_KEY] = fastSettings.comment3
-        settings[FAST_COMMENT_4_KEY] = fastSettings.comment4
-        settings[FAST_COMMENT_5_KEY] = fastSettings.comment5
-        settings[FAST_COMMENT_6_KEY] = fastSettings.comment6
+suspend fun saveFastCommentsSettings(context: Context, settings: FastCommentsSettings) {
+    context.dataStore.edit { prefs ->
+        prefs[FAST_COMMENTS_ENABLED_KEY] = settings.enabled
+        prefs[FAST_COMMENTS_LIST_KEY]    = settings.comments.toSet()
     }
 }
 
-fun readFastCommentsSettings(context: Context): Flow<FastCommentsSettings> = context.dataStore.data
-    .map { preferences ->
-        FastCommentsSettings(
-            enabled = preferences[FAST_COMMENTS_ENABLED_KEY] ?: false,
-            comment1 = preferences[FAST_COMMENT_1_KEY] ?: "In",
-            comment2 = preferences[FAST_COMMENT_2_KEY] ?: "Transport",
-            comment3 = preferences[FAST_COMMENT_3_KEY] ?: "Out",
-            comment4 = preferences[FAST_COMMENT_4_KEY] ?: "Return",
-            comment5 = preferences[FAST_COMMENT_5_KEY] ?: "Wait In",
-            comment6 = preferences[FAST_COMMENT_6_KEY] ?: "Wait Out"
-        )
-    }
+fun readFastCommentsSettings(context: Context): Flow<FastCommentsSettings> =
+    context.dataStore.data
+        .map { prefs ->
+            val enabled = prefs[FAST_COMMENTS_ENABLED_KEY] ?: false
+            // if user never saved, fall back to the six defaults
+            val savedSet = prefs[FAST_COMMENTS_LIST_KEY]
+            val list     = savedSet?.toList()
+                ?: FastCommentsSettings().comments
+            FastCommentsSettings(enabled = enabled, comments = list)
+        }
 
 // Save SheetSettings.
 suspend fun saveSheetSettings(context: Context, sheetSettings: SheetSettings) {

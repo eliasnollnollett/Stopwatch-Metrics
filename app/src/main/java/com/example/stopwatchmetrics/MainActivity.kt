@@ -33,6 +33,7 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -50,12 +51,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -63,6 +66,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -145,8 +149,6 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.material.icons.filled.Add
 
 
 // --- Helper Functions & Data Classes ---
@@ -1377,92 +1379,101 @@ fun FastCommentsEditDialog(
     onConfirm: (FastCommentsSettings) -> Unit,
     onDismiss: () -> Unit
 ) {
-    // 1) Flatten into a List<String>
-    val initialList = listOf(
-        initialFastComments.comment1,
-        initialFastComments.comment2,
-        initialFastComments.comment3,
-        initialFastComments.comment4,
-        initialFastComments.comment5,
-        initialFastComments.comment6
-    )
-
-    // 2) Remember a mutableStateListOf inside this composable
-    val comments = remember(initialList) {
-        mutableStateListOf<String>().apply { addAll(initialList) }
+    // 1) Back your UI with a MutableStateList
+    val comments = remember {
+        mutableStateListOf<String>().apply {
+            addAll(initialFastComments.comments)
+        }
     }
 
-    // 3) Render exactly one AlertDialog, just replace your Column-of-6-TextFields
+    // 2) Create a LazyListState to control scrolling
+    val listState = rememberLazyListState()
+
+    // 3) Whenever comments.size changes, scroll to the bottom
+    LaunchedEffect(comments.size) {
+        if (comments.isNotEmpty()) {
+            listState.animateScrollToItem(comments.lastIndex)
+        }
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,                   // you already import material3.AlertDialog
-        title = { Text("Edit Fast Comments") },         // you already import material3.Text
+        // 4) Make the dialog wider / taller
+        modifier = Modifier
+            .fillMaxWidth(1f)
+            .heightIn(min = 400.dp, max = 600.dp),
+
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Fast Comments") },
         text = {
-            // You already have: import androidx.compose.foundation.lazy.LazyColumn
-            //                    import androidx.compose.foundation.lazy.items
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // give the column enough height so the list scrolls
+                    .heightIn(min = 400.dp, max = 600.dp)
             ) {
-                // use items(comments) because you already imported items, no need for itemsIndexed
-                items(comments) { textValue ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        OutlinedTextField(                        // you already import material3.OutlinedTextField
-                            value = textValue,
-                            onValueChange = { new ->                // updates the list in place
-                                val idx = comments.indexOf(textValue)
-                                if (idx >= 0) comments[idx] = new
-                            },
-                            placeholder = { Text("Comment ${comments.indexOf(textValue)+1}") },
-                            singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp)
-                        )
-                        IconButton(                               // you already import material3.IconButton?
-                            onClick = {
-                                if (comments.size > 1)               // guard minimum one
-                                    comments.remove(textValue)
-                            }
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(comments) { commentText ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.Delete,               // you already import this icon
-                                contentDescription = "Remove comment")
+                            OutlinedTextField(
+                                value = commentText,
+                                onValueChange = { new ->
+                                    val idx = comments.indexOf(commentText)
+                                    if (idx >= 0) comments[idx] = new
+                                },
+                                placeholder = {
+                                    Text("Comment ${comments.indexOf(commentText) + 1}")
+                                },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(56.dp)
+                            )
+                            IconButton(onClick = {
+                                if (comments.size > 1) comments.remove(commentText)
+                            }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Remove comment")
+                            }
                         }
                     }
                 }
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { comments += "" }) {  // you already import material3.OutlinedButton
-                Icon(Icons.Default.Add, contentDescription = "Add")
-                Spacer(Modifier.width(4.dp))
-                Text("Add comment")
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = { comments += "" },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add")
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add comment")
+                }
             }
         },
+
         confirmButton = {
             Button(onClick = {
-                // 4) Map back into your data class here:
-                val updated = initialFastComments.copy(
-                    comment1 = comments.getOrNull(0).orEmpty(),
-                    comment2 = comments.getOrNull(1).orEmpty(),
-                    comment3 = comments.getOrNull(2).orEmpty(),
-                    comment4 = comments.getOrNull(3).orEmpty(),
-                    comment5 = comments.getOrNull(4).orEmpty(),
-                    comment6 = comments.getOrNull(5).orEmpty()
-                )
+                val updated = initialFastComments.copy(comments = comments.toList())
                 onConfirm(updated)
             }) {
                 Text("Save")
             }
         },
         dismissButton = {
-            Button(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            Button(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
+
+
 
 
 @Composable
@@ -1590,6 +1601,9 @@ fun CommentDialogUnified(
     val context = LocalContext.current
 
     AlertDialog(
+        modifier = Modifier
+            .fillMaxWidth(1f)
+            .heightIn(min = 400.dp, max = 600.dp),
         onDismissRequest = onDismiss,
         title = {
             Text(if (initialComment.isEmpty()) "Add Comment" else "Edit Comment")
@@ -1607,7 +1621,6 @@ fun CommentDialogUnified(
                 if (fastCommentsSettings.enabled) {
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // ← here’s the new header row with cog
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1636,14 +1649,8 @@ fun CommentDialogUnified(
                         mainAxisSpacing = 8.dp,
                         crossAxisSpacing = 8.dp
                     ) {
-                        listOf(
-                            fastCommentsSettings.comment1,
-                            fastCommentsSettings.comment2,
-                            fastCommentsSettings.comment3,
-                            fastCommentsSettings.comment4,
-                            fastCommentsSettings.comment5,
-                            fastCommentsSettings.comment6
-                        ).forEach { fastComment ->
+                        // ← use the dynamic list
+                        fastCommentsSettings.comments.forEach { fastComment ->
                             Button(
                                 onClick = {
                                     onConfirm(fastComment)
@@ -1673,6 +1680,7 @@ fun CommentDialogUnified(
         }
     )
 }
+
 
 
 
