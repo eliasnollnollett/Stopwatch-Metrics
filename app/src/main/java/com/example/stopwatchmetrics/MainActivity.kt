@@ -146,6 +146,7 @@ import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.Add
 
 
 // --- Helper Functions & Data Classes ---
@@ -1376,62 +1377,82 @@ fun FastCommentsEditDialog(
     onConfirm: (FastCommentsSettings) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var fastComments by remember { mutableStateOf(initialFastComments) }
+    // 1) Flatten into a List<String>
+    val initialList = listOf(
+        initialFastComments.comment1,
+        initialFastComments.comment2,
+        initialFastComments.comment3,
+        initialFastComments.comment4,
+        initialFastComments.comment5,
+        initialFastComments.comment6
+    )
 
+    // 2) Remember a mutableStateListOf inside this composable
+    val comments = remember(initialList) {
+        mutableStateListOf<String>().apply { addAll(initialList) }
+    }
+
+    // 3) Render exactly one AlertDialog, just replace your Column-of-6-TextFields
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit Fast Comments") },
+        onDismissRequest = onDismiss,                   // you already import material3.AlertDialog
+        title = { Text("Edit Fast Comments") },         // you already import material3.Text
         text = {
-            Column(
+            // You already have: import androidx.compose.foundation.lazy.LazyColumn
+            //                    import androidx.compose.foundation.lazy.items
+            LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = fastComments.comment1,
-                    onValueChange = { fastComments = fastComments.copy(comment1 = it) },
-                    label = { Text("Fast Comment 1") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = fastComments.comment2,
-                    onValueChange = { fastComments = fastComments.copy(comment2 = it) },
-                    label = { Text("Fast Comment 2") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = fastComments.comment3,
-                    onValueChange = { fastComments = fastComments.copy(comment3 = it) },
-                    label = { Text("Fast Comment 3") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = fastComments.comment4,
-                    onValueChange = { fastComments = fastComments.copy(comment4 = it) },
-                    label = { Text("Fast Comment 4") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = fastComments.comment5,
-                    onValueChange = { fastComments = fastComments.copy(comment5 = it) },
-                    label = { Text("Fast Comment 5") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = fastComments.comment6,
-                    onValueChange = { fastComments = fastComments.copy(comment6 = it) },
-                    label = { Text("Fast Comment 6") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // use items(comments) because you already imported items, no need for itemsIndexed
+                items(comments) { textValue ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(                        // you already import material3.OutlinedTextField
+                            value = textValue,
+                            onValueChange = { new ->                // updates the list in place
+                                val idx = comments.indexOf(textValue)
+                                if (idx >= 0) comments[idx] = new
+                            },
+                            placeholder = { Text("Comment ${comments.indexOf(textValue)+1}") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp)
+                        )
+                        IconButton(                               // you already import material3.IconButton?
+                            onClick = {
+                                if (comments.size > 1)               // guard minimum one
+                                    comments.remove(textValue)
+                            }
+                        ) {
+                            Icon(Icons.Default.Delete,               // you already import this icon
+                                contentDescription = "Remove comment")
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { comments += "" }) {  // you already import material3.OutlinedButton
+                Icon(Icons.Default.Add, contentDescription = "Add")
+                Spacer(Modifier.width(4.dp))
+                Text("Add comment")
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(fastComments) }) {
+            Button(onClick = {
+                // 4) Map back into your data class here:
+                val updated = initialFastComments.copy(
+                    comment1 = comments.getOrNull(0).orEmpty(),
+                    comment2 = comments.getOrNull(1).orEmpty(),
+                    comment3 = comments.getOrNull(2).orEmpty(),
+                    comment4 = comments.getOrNull(3).orEmpty(),
+                    comment5 = comments.getOrNull(4).orEmpty(),
+                    comment6 = comments.getOrNull(5).orEmpty()
+                )
+                onConfirm(updated)
+            }) {
                 Text("Save")
             }
         },
@@ -1442,6 +1463,7 @@ fun FastCommentsEditDialog(
         }
     )
 }
+
 
 @Composable
 fun SettingsRow(
@@ -1559,9 +1581,10 @@ fun SaveShareOptionsDialog(
 fun CommentDialogUnified(
     initialComment: String,
     fastCommentsSettings: FastCommentsSettings,
-    isEditingOldPoint: Boolean, // new parameter to determine behavior
+    isEditingOldPoint: Boolean,
     onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onEditFastComments: () -> Unit
 ) {
     var comment by remember { mutableStateOf(initialComment) }
     val context = LocalContext.current
@@ -1580,10 +1603,34 @@ fun CommentDialogUnified(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = false
                 )
+
                 if (fastCommentsSettings.enabled) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Fast Comments", style = MaterialTheme.typography.bodyMedium)
+
+                    // ← here’s the new header row with cog
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Fast Comments",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = onEditFastComments,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Edit fast comments"
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
+
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         mainAxisSpacing = 8.dp,
@@ -1599,10 +1646,6 @@ fun CommentDialogUnified(
                         ).forEach { fastComment ->
                             Button(
                                 onClick = {
-                                    // Only show toast if it's not an edit on an old point.
-                                  //  if (!isEditingOldPoint) {
-                                  //      ToastHelper.showToast(context, "Fast comment '$fastComment' added", 1000L)
-                                   // }
                                     onConfirm(fastComment)
                                 },
                                 colors = ButtonDefaults.buttonColors(
@@ -1611,7 +1654,7 @@ fun CommentDialogUnified(
                                 ),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text(text = fastComment, color = MaterialTheme.colorScheme.onBackground)
+                                Text(fastComment)
                             }
                         }
                     }
@@ -1620,22 +1663,17 @@ fun CommentDialogUnified(
         },
         confirmButton = {
             Row {
-                Button(onClick = { onConfirm("") }) {
-                    Text("Clear")
-                }
+                Button(onClick = { onConfirm("") }) { Text("Clear") }
                 Spacer(modifier = Modifier.width(8.dp))
-                Button(onClick = { onConfirm(comment) }) {
-                    Text("Save")
-                }
+                Button(onClick = { onConfirm(comment) }) { Text("Save") }
             }
         },
         dismissButton = {
-            Button(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            Button(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
+
 
 
 
@@ -1989,6 +2027,7 @@ fun MainScreen(
     onRenameConfirm: (String) -> Unit,
     onCaptureImage: () -> Unit,
     onAddComment: () -> Unit,
+    onEditFastComments: () -> Unit,
     onUndo: () -> Unit,
     fastCommentsSettings: FastCommentsSettings,
     onImageClick: (PointData) -> Unit,
@@ -2438,7 +2477,8 @@ fun MainScreen(
                 onUpdatePointComment(point, newComment)
                 selectedPointForComment = null
             },
-            onDismiss = { selectedPointForComment = null }
+            onDismiss = { selectedPointForComment = null },
+            onEditFastComments   = onEditFastComments
         )
     }
 
@@ -2766,6 +2806,7 @@ class MainActivity : ComponentActivity() {
                 // Local UI state.
                 var showCommentDialog by remember { mutableStateOf(false) }
                 var showImageUpdateDialog by remember { mutableStateOf(false) }
+                var showFastCommentsEditDialog by remember { mutableStateOf(false) }
 
                 // Define your capture image action.
                 val captureImage: () -> Unit = {
@@ -2856,6 +2897,10 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onCaptureImage         = { captureImage() },
                                 onAddComment           = { showCommentDialog = true },
+                                onEditFastComments = {
+                                          showCommentDialog        = false
+                                          showFastCommentsEditDialog = true
+                                        },
                                 onUndo                 = {
                                     undoLastPoint()
                                     activityInstance.isDirty = true
@@ -2999,9 +3044,26 @@ class MainActivity : ComponentActivity() {
                                 }
                                 showCommentDialog = false
                             },
-                            onDismiss = {
+                            onDismiss = { showCommentDialog = false },
+                            onEditFastComments = {
+                                // hide comment dialog, show the editor
                                 showCommentDialog = false
+                                showFastCommentsEditDialog = true
                             }
+                        )
+                    }
+
+                    if (showFastCommentsEditDialog) {
+                        FastCommentsEditDialog(
+                            initialFastComments = currentFastComments,
+                            onConfirm = { newSettings ->
+                                // persist and close
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    saveFastCommentsSettings(context, newSettings)
+                                }
+                                showFastCommentsEditDialog = false
+                            },
+                            onDismiss = { showFastCommentsEditDialog = false }
                         )
                     }
 
