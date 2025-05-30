@@ -2,7 +2,6 @@ package com.example.stopwatchmetrics
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.Flow
@@ -15,13 +14,10 @@ val Context.dataStore by preferencesDataStore(name = "settings")
 // Time format key (already exists)
 val TIME_FORMAT_KEY = booleanPreferencesKey("time_format_setting")
 
-
-
 // Data class along with companion object for loading from DataStore.
 data class TimeFormatSetting(
     val useShortFormat: Boolean = false  // default to false
 )
-
 // DataStore‐keys.kt  (or wherever you keep the other keys)
 val SHOW_START_TIPS = booleanPreferencesKey("show_start_tips")
 
@@ -38,23 +34,11 @@ private val SHOW_TMU_KEY                  = booleanPreferencesKey("show_tmu")
 private val SHOW_START_TIME_KEY           = booleanPreferencesKey("show_start_time")
 private val SHOW_COMMENT_KEY              = booleanPreferencesKey("show_comment")
 private val SHOW_IMAGE_KEY                = booleanPreferencesKey("show_image")
-//private val SHOW_EMPTY_IMAGE_KEY          = booleanPreferencesKey("show_empty_image")
-//private val SHOW_INSTRUCTIONS_KEY         = booleanPreferencesKey("show_instructions")
-//private val SHOW_GRAPH_KEY                = booleanPreferencesKey("show_graph")
 
 private val FAST_COMMENTS_ENABLED_KEY = booleanPreferencesKey("fast_comments_enabled")
 private val FAST_COMMENTS_LIST_KEY    = stringSetPreferencesKey("fast_comments_list")
 
 // --- Fast Comments Keys ---
-
-val FAST_COMMENT_1_KEY = stringPreferencesKey("fast_comment_1")
-val FAST_COMMENT_2_KEY = stringPreferencesKey("fast_comment_2")
-val FAST_COMMENT_3_KEY = stringPreferencesKey("fast_comment_3")
-val FAST_COMMENT_4_KEY = stringPreferencesKey("fast_comment_4")
-val FAST_COMMENT_5_KEY = stringPreferencesKey("fast_comment_5")
-val FAST_COMMENT_6_KEY = stringPreferencesKey("fast_comment_6")
-
-
 
 // Save the time format setting.
 suspend fun saveTimeFormatSetting(context: Context, useShortFormat: Boolean) {
@@ -102,17 +86,9 @@ suspend fun saveSheetSettings(context: Context, sheetSettings: SheetSettings) {
         prefs[SHOW_COMMENT_KEY]       = sheetSettings.showComment
         prefs[SHOW_IMAGE_KEY]         = sheetSettings.showImage
 
-        // replaced hide… with showEmpty…
-       // prefs[SHOW_EMPTY_COMMENT_KEY] = sheetSettings.showEmptyComment
-       // prefs[SHOW_EMPTY_IMAGE_KEY]   = sheetSettings.showEmptyImage
 
-        // replaced hideInstructions with showInstructions
-      //  prefs[SHOW_INSTRUCTIONS_KEY]  = sheetSettings.showInstructions
-
-      //  prefs[SHOW_GRAPH_KEY]         = sheetSettings.showGraph
     }
 }
-
 
 // Read SheetSettings as a Flow.
 fun readSheetSettings(context: Context): Flow<SheetSettings> =
@@ -125,13 +101,6 @@ fun readSheetSettings(context: Context): Flow<SheetSettings> =
                 showStartTime     = prefs[SHOW_START_TIME_KEY]    ?: true,
                 showComment       = prefs[SHOW_COMMENT_KEY]       ?: true,
                 showImage         = prefs[SHOW_IMAGE_KEY]         ?: true,
-
-                // new defaults: false means “don’t force‐show empty”
-              //  showEmptyComment  = prefs[SHOW_EMPTY_COMMENT_KEY] ?: false,
-              //  showEmptyImage    = prefs[SHOW_EMPTY_IMAGE_KEY]   ?: false,
-              //  showInstructions  = prefs[SHOW_INSTRUCTIONS_KEY]  ?: true,
-
-              //  showGraph         = prefs[SHOW_GRAPH_KEY]         ?: false
             )
         }
 
