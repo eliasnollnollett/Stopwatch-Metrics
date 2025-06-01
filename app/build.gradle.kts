@@ -65,17 +65,16 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.coil.compose)
     implementation(libs.constraintlayout.compose)
-
     implementation(libs.camera.core)
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
-
     implementation(libs.constraintlayout)
     implementation(libs.datastore.preferences)
     implementation(libs.accompanist.flowlayout)
     implementation(libs.apache.poi)
-
+    implementation(libs.compose.ui)
+    implementation(libs.material3)
     implementation(libs.androidx.material.icons.extended)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -85,4 +84,5 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
+    implementation(libs.compose.ui.text)
 }

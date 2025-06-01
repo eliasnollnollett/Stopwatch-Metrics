@@ -56,6 +56,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -67,6 +68,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -149,6 +151,8 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
+import androidx.compose.material3.TextField
+
 
 
 // --- Helper Functions & Data Classes ---
@@ -176,6 +180,18 @@ fun formatPointInTime(timeMs: Long): String {
     val formatter = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     return formatter.format(date)
 }
+
+/** A single user‐defined cycle: a name plus an ordered list of step labels. */
+data class PresetCycle(
+    val name: String,
+    val steps: List<String>
+)
+
+/** Tracks which step index we’re currently on, for a loaded PresetCycle. */
+data class ActiveCycle(
+    val preset: PresetCycle,
+    var currentIndex: Int = 0
+)
 
 data class PointData(
     var elapsedTime: Long,
@@ -1684,6 +1700,193 @@ fun CommentDialogUnified(
 
 
 
+@Composable
+fun PresetCycleListDialog(
+    allCycles: List<PresetCycle>,
+    onDismiss: () -> Unit,
+    onLoad: (PresetCycle) -> Unit,
+    onCreateNew: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose a Preset Cycle") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 200.dp, max = 300.dp)
+            ) {
+                if (allCycles.isEmpty()) {
+                    Text("No presets saved yet.")
+                } else {
+                    LazyColumn {
+                        items(allCycles) { cycle ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onLoad(cycle) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = cycle.name,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowBack,
+                                    contentDescription = "Load ${cycle.name}"
+                                )
+                            }
+                            Divider()
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = onCreateNew,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add new preset")
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add New Preset")
+                }
+            }
+        },
+        confirmButton = {},
+
+        // ─── Insert a “Clear Preset” button here ───
+        dismissButton = {
+            Column {
+                OutlinedButton(
+                    onClick = {
+                        // Clear the currently‐loaded preset
+                        onLoad(PresetCycle(name = "", steps = emptyList()))
+                        onDismiss()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                ) {
+                    Text("Clear Preset")
+                }
+                OutlinedButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        }
+    )
+}
+
+
+@Composable
+fun NewPresetDialog(
+    existingNames: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (PresetCycle) -> Unit
+) {
+    var presetName by remember { mutableStateOf("") }
+    val steps = remember { mutableStateListOf<String>() }
+    if (steps.isEmpty()) {
+        steps.add("") // start with one blank field
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Create New Preset") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 300.dp, max = 500.dp)
+            ) {
+                OutlinedTextField(
+                    value = presetName,
+                    onValueChange = { presetName = it },
+                    label = { Text("Preset Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = presetName.isBlank() || existingNames.contains(presetName),
+                    supportingText = {
+                        if (presetName.isBlank()) {
+                            Text("Name cannot be empty", color = Color.Red)
+                        } else if (existingNames.contains(presetName)) {
+                            Text("A preset with that name already exists", color = Color.Red)
+                        }
+                    }
+                )
+                Spacer(Modifier.height(16.dp))
+
+                Text("Steps:", style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(8.dp))
+
+                LazyColumn {
+                    items(steps.size) { index ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            TextField(
+                                value = steps[index],
+                                onValueChange = { newText -> steps[index] = newText },
+                                label = { Text("Step ${index + 1}") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            IconButton(onClick = {
+                                if (steps.size > 1) {
+                                    steps.removeAt(index)
+                                } else {
+                                    steps[index] = ""
+                                }
+                            }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Remove step")
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { steps.add("") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add another step")
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add Step")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val trimmedName = presetName.trim()
+                    val validSteps = steps.map { it.trim() }.filter { it.isNotBlank() }
+                    if (
+                        trimmedName.isNotBlank() &&
+                        !existingNames.contains(trimmedName) &&
+                        validSteps.isNotEmpty()
+                    ) {
+                        onSave(PresetCycle(name = trimmedName, steps = validSteps))
+                    }
+                },
+                enabled = presetName.trim().isNotBlank()
+                        && !existingNames.contains(presetName.trim())
+                        && steps.all { it.trim().isNotBlank() }
+            ) {
+                Text("Save Preset")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
 
 
 
@@ -2043,9 +2246,16 @@ fun MainScreen(
     onUpdatePointComment: (PointData, String) -> Unit,
     onToggleImageColumn: () -> Unit,
     onToggleCommentColumn: () -> Unit,
+    activeCycle: ActiveCycle?,
+    onLoadCycle: (PresetCycle) -> Unit,
+    onSaveAllCycles: (List<PresetCycle>) -> Unit,
+    allPresetCycles: List<PresetCycle>,
 ) {
 
     val context = LocalContext.current
+
+    var showPresetListDialog by remember { mutableStateOf(false) }
+    var showNewPresetDialog by remember { mutableStateOf(false) }
 
     // 1) read the preference – initial = null means “nothing loaded yet”
     val showTipsPref: Boolean? by readShowTips(context)
@@ -2105,17 +2315,18 @@ fun MainScreen(
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment   = Alignment.CenterVertically
                     ) {
                         Text("Stopwatch Metrics")
+
                         IconButton(onClick = { showTipsDialog = true }) {
-                            Icon(Icons.Default.Info, "Tips", Modifier.size(30.dp))
+                            Icon(Icons.Default.Info, contentDescription = "Tips")
                         }
                         IconButton(onClick = onFileBrowserClick) {
-                            Icon(Icons.Filled.FolderOpen, "Saved", Modifier.size(30.dp))
+                            Icon(Icons.Filled.FolderOpen, contentDescription = "Saved")
                         }
                         IconButton(onClick = onSettingsClick) {
-                            Icon(Icons.Filled.Settings, "Settings", Modifier.size(30.dp))
+                            Icon(Icons.Filled.Settings, contentDescription = "Settings")
                         }
                     }
                 }
@@ -2259,129 +2470,205 @@ fun MainScreen(
                     },
 
                     // ─── PAGE 1: PPI + timer + play/reset row + camera/comment row + point‑table ───
+                    // ─── PAGE 1 ───
                     {
-                        Column(
-                            Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Spacer(Modifier.height(16.dp))
-                            PointProgressIndicator(
-                                elapsedTime           = elapsedTime,
-                                points                = displayPoints,
-                                centerCircleRadius    = 3.dp,
-                                pointerLengthFraction = 0.8f,
-                                modifier              = Modifier.size(120.dp)
-                            )
-                            Spacer(Modifier.height(12.dp))
-                            Text(formatTime(elapsedTime, timeFormatSetting),
-                                fontSize = 28.sp,
-                                color    = MaterialTheme.colorScheme.onBackground)
-                            Spacer(Modifier.height(12.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                TouchVolumeButton(
-                                    icon            = if (isRunning) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                    label           = "",
-                                    tapInstruction  = "Play/Pause",
-                                    holdInstruction = "Save",
-                                    onTap           = onToggleStopwatch,
-                                    onLongPress     = onPrepareSaveShare,
-                                    backgroundColor = MaterialTheme.colorScheme.surface,
-                                    iconTint        = MaterialTheme.colorScheme.onBackground,
-                                    modifier        = Modifier.weight(1f).padding(8.dp)
-                                )
-                                TouchVolumeButton(
-                                    icon            = Icons.Filled.Timer,
-                                    label           = "",
-                                    tapInstruction  = "New Point",
-                                    holdInstruction = "Reset",
-                                    onTap           = onNewPoint,
-                                    onLongPress     = onResetRequest,
-                                    backgroundColor = MaterialTheme.colorScheme.surface,
-                                    iconTint        = MaterialTheme.colorScheme.onBackground,
-                                    modifier        = Modifier.weight(1f).padding(8.dp)
-                                )
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceEvenly
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            Column(
+                                modifier            = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                // Toggle Comments
-                                IconButton(
-                                    onClick = {
-                                        val newSettings = sheetSettings.copy(
-                                            showComment      = !sheetSettings.showComment
-                                        )
-                                        CoroutineScope(Dispatchers.IO).launch {
-                                            saveSheetSettings(context, newSettings)
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .size(48.dp)                          // make the touch target big enough
-                                        .clip(CircleShape)                    // clip to circle
-                                        .border(
-                                            1.dp,
-                                            if (sheetSettings.showComment) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                            CircleShape
-                                        )
+                                Spacer(Modifier.height(16.dp))
+
+                                // ── TOP ROW: [Preset info]  [PPI @120dp] ──
+                                Row(
+                                    modifier          = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        Icons.Filled.Edit,
-                                        contentDescription = "Toggle Comments",
-                                        tint = if (sheetSettings.showComment)
-                                            MaterialTheme.colorScheme.primary
-                                        else
-                                            MaterialTheme.colorScheme.onBackground
-                                    )
+                                    // LEFT: Preset info
+                                    Column(
+                                        modifier = Modifier
+                                            .wrapContentWidth()
+                                            .padding(start = 8.dp)
+                                    ) {
+                                        if (activeCycle != null) {
+                                            Text(
+                                                text  = "Preset loaded: ${activeCycle!!.preset.name}",
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            Text(
+                                                text  = "Next step: ${
+                                                    activeCycle!!.preset.steps
+                                                        .getOrNull(activeCycle!!.currentIndex) ?: ""
+                                                }",
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            Spacer(Modifier.height(8.dp))
+                                            OutlinedButton(onClick = {
+                                                activeCycle?.let { active ->
+                                                    active.currentIndex = 0
+                                                }
+                                            }) {
+                                                Text("New Cycle")
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.weight(1f))
+
+                                    // CENTER: PPI fixed at 120dp
+                                    Box(
+                                        modifier         = Modifier.size(120.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        PointProgressIndicator(
+                                            elapsedTime           = elapsedTime,
+                                            points                = displayPoints,
+                                            centerCircleRadius    = 3.dp,
+                                            pointerLengthFraction = 0.8f,
+                                            modifier              = Modifier.matchParentSize()
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.weight(1f))
                                 }
 
-                                // Toggle Images
-                                IconButton(
-                                    onClick = {
-                                        val newSettings = sheetSettings.copy(
-                                            showImage      = !sheetSettings.showImage
-                                        )
-                                        CoroutineScope(Dispatchers.IO).launch {
-                                            saveSheetSettings(context, newSettings)
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(CircleShape)
-                                        .border(
-                                            1.dp,
-                                            if (sheetSettings.showImage) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                            CircleShape
-                                        )
+                                Spacer(Modifier.height(12.dp))
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
-                                    Icon(
-                                        Icons.Filled.CameraAlt,
-                                        contentDescription = "Toggle Images",
-                                        tint = if (sheetSettings.showImage)
-                                            MaterialTheme.colorScheme.primary
-                                        else
-                                            MaterialTheme.colorScheme.onBackground
+                                    TouchVolumeButton(
+                                        icon = if (isRunning) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                        label = "",
+                                        tapInstruction = "Play/Pause",
+                                        holdInstruction = "Save",
+                                        onTap = onToggleStopwatch,
+                                        onLongPress = onPrepareSaveShare,
+                                        backgroundColor = MaterialTheme.colorScheme.surface,
+                                        iconTint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(8.dp)
+                                    )
+                                    TouchVolumeButton(
+                                        icon = Icons.Filled.Timer,
+                                        label = "",
+                                        tapInstruction = "New Point",
+                                        holdInstruction = "Reset",
+                                        onTap = onNewPoint,
+                                        onLongPress = onResetRequest,
+                                        backgroundColor = MaterialTheme.colorScheme.surface,
+                                        iconTint = MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(8.dp)
                                     )
                                 }
+                                Spacer(Modifier.height(12.dp))
+
+                                // ── “Configure Presets” BUTTON ──
+                                Button(
+                                    onClick  = { showPresetListDialog = true },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                ) {
+                                    Text("Configure Presets")
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                // ── COMMENT / IMAGE TOGGLES (now above the PointTable) ──
+                                Row(
+                                    modifier               = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp),
+                                    horizontalArrangement  = Arrangement.SpaceEvenly
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            val newSettings = sheetSettings.copy(
+                                                showComment = !sheetSettings.showComment
+                                            )
+                                            CoroutineScope(Dispatchers.IO).launch {
+                                                saveSheetSettings(context, newSettings)
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .border(
+                                                1.dp,
+                                                if (sheetSettings.showComment)
+                                                    MaterialTheme.colorScheme.primary
+                                                else
+                                                    MaterialTheme.colorScheme.outline,
+                                                CircleShape
+                                            )
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Edit,
+                                            contentDescription = "Toggle Comments",
+                                            tint = if (sheetSettings.showComment)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onBackground
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            val newSettings = sheetSettings.copy(
+                                                showImage = !sheetSettings.showImage
+                                            )
+                                            CoroutineScope(Dispatchers.IO).launch {
+                                                saveSheetSettings(context, newSettings)
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .border(
+                                                1.dp,
+                                                if (sheetSettings.showImage)
+                                                    MaterialTheme.colorScheme.primary
+                                                else
+                                                    MaterialTheme.colorScheme.outline,
+                                                CircleShape
+                                            )
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.CameraAlt,
+                                            contentDescription = "Toggle Images",
+                                            tint = if (sheetSettings.showImage)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onBackground
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                // ── POINT TABLE ──
+                                PointTable(
+                                    points                = allPoints,
+                                    currentActivePoint    = currentActivePoint,
+                                    timeFormatSetting     = timeFormatSetting,
+                                    sheetSettings         = sheetSettings,
+                                    onCommentClick        = { selectedPointForComment = it },
+                                    onImageClick          = { onImageClick(it) },
+                                    onAddCommentForLive   = onAddComment,
+                                    onCaptureImageForLive = onCaptureImage
+                                )
                             }
-
-
-                            Spacer(Modifier.height(16.dp))
-
-                            PointTable(
-                                points = allPoints,
-                                currentActivePoint    = currentActivePoint,
-                                timeFormatSetting     = timeFormatSetting,
-                                sheetSettings         = sheetSettings,
-                                onCommentClick        = { selectedPointForComment = it },
-                                onImageClick          = { onImageClick(it) },
-                                onAddCommentForLive   = onAddComment,
-                                onCaptureImageForLive = onCaptureImage
-                            )
                         }
                     },
+
 
                     // ─── PAGE 2: graph + timer + table ───────────────────────────────────────────
                     {
@@ -2501,6 +2788,36 @@ fun MainScreen(
     }
     // inside MainScreen – or wherever you show the tips dialog
 
+
+    if (showPresetListDialog) {
+        PresetCycleListDialog(
+            allCycles = allPresetCycles,
+            onDismiss = { showPresetListDialog = false },
+            onLoad    = { chosen ->
+                onLoadCycle(chosen)
+                showPresetListDialog = false
+            },
+            onCreateNew = {
+                showPresetListDialog = false
+                showNewPresetDialog  = true
+            }
+        )
+    }
+
+    if (showNewPresetDialog) {
+        NewPresetDialog(
+            existingNames = allPresetCycles.map { it.name },
+            onDismiss     = { showNewPresetDialog = false },
+            onSave        = { newPreset ->
+                // Build a fresh list that replaces any same‐name entry:
+                val updated = allPresetCycles.filter { it.name != newPreset.name } + newPreset
+                onSaveAllCycles(updated)
+                onLoadCycle(newPreset)
+                showNewPresetDialog = false
+            }
+        )
+    }
+
     if (showTipsDialog) {
         AlertDialog(
             onDismissRequest = { showTipsDialog = false },
@@ -2558,6 +2875,13 @@ class MainActivity : ComponentActivity() {
 
 
 
+
+    // ── NEW: Hold all saved presets in memory (you can later persist via DataStore) ──
+    private var allPresetCycles by mutableStateOf<List<PresetCycle>>(emptyList())
+
+    // We also need to track the currently loaded ActiveCycle:
+    private var activeCycle by mutableStateOf<ActiveCycle?>(null)
+
     private var isDirty by mutableStateOf(false)
 
     private var currentActivePoint by mutableStateOf<PointData?>(null)
@@ -2586,6 +2910,11 @@ class MainActivity : ComponentActivity() {
             arrayOf(Manifest.permission.CAMERA),
             REQUEST_CODE_CAMERA_PERMISSION
         )
+    }
+
+    private fun saveAllPresetCycles(newList: List<PresetCycle>) {
+        allPresetCycles = newList
+        // TODO: persist to DataStore or wherever you like
     }
 
 
@@ -2955,7 +3284,19 @@ class MainActivity : ComponentActivity() {
                                         currentActivePoint = point.copy(imagePath = newPath)
                                     }
                                     isDirty = true
-                                }
+                                },
+
+                                activeCycle            = activeCycle,
+
+                                onLoadCycle = { chosenPreset ->
+                                    activeCycle = ActiveCycle(preset = chosenPreset, currentIndex = 0)
+                                },
+                                onSaveAllCycles = { updatedList ->
+                                            lifecycleScope.launch {
+                                                    saveAllPresetCycles(updatedList)
+                                                }
+                                        },
+                                allPresetCycles = allPresetCycles
                             )
                         }
                         Screen.Settings -> {
@@ -3175,10 +3516,6 @@ class MainActivity : ComponentActivity() {
     }
 
 
-
-
-
-
     private fun createImageFile(): File {
         val timeStamp: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         // Get the public Pictures directory.
@@ -3215,42 +3552,38 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // Otherwise, when there is a nonzero elapsed time:
-        // Record the current active point.
-        currentActivePoint?.let { _points.add(it) }
+        // If there is a loaded preset with steps, copy the next step into this point's comment:
+        val commentForThisPoint = activeCycle?.let { active ->
+            val idx = active.currentIndex
+            // safety: if idx goes out of bounds, clamp to last step
+            val stepLabel = active.preset.steps.getOrNull(idx) ?: ""
+            // advance index for next point
+            active.currentIndex = (idx + 1).coerceAtMost(active.preset.steps.lastIndex)
+            stepLabel
+        } ?: ""
+
+        // Record the current active point, injecting the comment from preset:
+        currentActivePoint?.let { live ->
+            val filled = live.copy(
+                comment = commentForThisPoint,
+                elapsedTime = live.elapsedTime
+            )
+            _points.add(filled)
+        }
 
         // Reset timing variables for a new measurement cycle.
         startTime = System.currentTimeMillis()
         accumulatedTime = 0L
         _elapsedTime.value = 0L
 
-        // Create a new active point starting from 0.
+        // Create a brand‐new “live” point. Its comment will be assigned on the next newPoint().
         currentActivePoint = PointData(
-            elapsedTime = 0L,
-            pointStartTime = startTime
+            elapsedTime     = 0L,
+            pointStartTime  = startTime,
+            comment         = ""  // we’ll fill it next time newPoint() is called
         )
 
-        // If paused, start the stopwatch for the new cycle.
-        if (!_isRunning.value) {
-            toggleStopwatch()
-        }
-    }
-
-
-
-    private fun newCycleNoClear() {
-        // Reset timing variables for a new cycle.
-        startTime = System.currentTimeMillis()
-        accumulatedTime = 0L
-        _elapsedTime.value = 0L
-
-        // Create a new active point starting at the new start time.
-        currentActivePoint = PointData(
-            elapsedTime = 0L,
-            pointStartTime = startTime
-        )
-
-        // If the stopwatch is paused, start it.
+        // If paused, start the stopwatch for the new cycle:
         if (!_isRunning.value) {
             toggleStopwatch()
         }
