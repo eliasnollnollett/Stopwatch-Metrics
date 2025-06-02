@@ -2,13 +2,20 @@
 package com.example.stopwatchmetrics
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import android.util.Log
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+
 
 // ───────────────────────────────
 // Extension property on Context
@@ -99,6 +106,17 @@ fun readSheetSettings(context: Context): Flow<SheetSettings> =
 // FastComments Settings (already existed)
 // ───────────────────────────────
 
+data class FastCommentsSettings(
+    val enabled: Boolean = false,
+    val comments: List<String> = listOf(
+        "In",
+        "Transport",
+        "Out",
+        "Return",
+        "Wait In",
+        "Wait Out"
+    )
+)
 
 private val FAST_COMMENTS_ENABLED_KEY = booleanPreferencesKey("fast_comments_enabled")
 private val FAST_COMMENTS_LIST_KEY    = stringSetPreferencesKey("fast_comments_list")
@@ -144,65 +162,27 @@ fun readDarkModeSetting(context: Context): Flow<Boolean> =
 /**
  * Represents one user‐defined cycle.  (This mirrors your in‐memory data class.)
  */
-data class PresetCycle(
-    val name: String,
-    val steps: List<String>
-)
 
-/**
- * Usage format for serializing a single PresetCycle into a String:
- *
- *    "<presetName>::<step1>|<step2>|<step3>|…"
- *
- * Then we put all of those Strings into a Set<String> and store under PRESETS_KEY.
- * On read‐back, we split by "::" and then split the "steps" portion by "|" to rehydrate.
- *
- * Note: We assume that the literal substrings "::" and "|" never appear inside any presetName or step.
- * If you need to support arbitrary characters, you’d have to either escape them or switch to a JSON library.
- */
+/* --------------  PRESET CYCLES -------------- */
 
-private val PRESETS_KEY = stringSetPreferencesKey("preset_cycles")
+@Serializable
+data class PresetCycle(val name: String, val steps: List<String>)
 
-/**
- * Save the entire list of PresetCycle into DataStore.
- */
-suspend fun saveAllPresetCycles(context: Context, allCycles: List<PresetCycle>) {
-    // Convert each PresetCycle → single string
-    val serializedSet: Set<String> = allCycles.map { cycle ->
-        // Join steps by "|"
-        val stepsJoined = cycle.steps.joinToString(separator = "|")
-        // Format: "name::step1|step2|step3"
-        "${cycle.name}::${stepsJoined}"
-    }.toSet()
+/** ONE key – it holds a Set<String> */
+private val PRESET_CYCLES_KEY = stringSetPreferencesKey("preset_cycles")
 
-    context.dataStore.edit { prefs ->
-        prefs[PRESETS_KEY] = serializedSet
-        Log.d("DataStore", "Saved ${serializedSet.size} presets")
-    }
+private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+
+/** Save the whole list */
+suspend fun saveAllPresetCycles(ctx: Context, list: List<PresetCycle>) {
+    val set: Set<String> = list.map { json.encodeToString(it) }.toSet()
+    ctx.dataStore.edit { it[PRESET_CYCLES_KEY] = set }
 }
 
-/**
- * Read the Flow<List<PresetCycle>> from DataStore.
- * If nothing is stored yet, returns emptyList().
- */
-fun readAllPresetCycles(context: Context): Flow<List<PresetCycle>> =
-    context.dataStore.data
-        .map { prefs ->
-            val storedSet: Set<String>? = prefs[PRESETS_KEY]
-            if (storedSet == null || storedSet.isEmpty()) {
-                emptyList()
-            } else {
-                storedSet.mapNotNull { serialized ->
-                    // serialized form = "name::step1|step2|step3"
-                    val parts = serialized.split("::", limit = 2)
-                    if (parts.size != 2) return@mapNotNull null
-                    val name = parts[0]
-                    val stepsList = if (parts[1].isBlank()) {
-                        emptyList()
-                    } else {
-                        parts[1].split("|")
-                    }
-                    PresetCycle(name = name, steps = stepsList)
-                }
-            }
-        }
+/** Load the list (Flow) */
+fun readAllPresetCycles(ctx: Context): Flow<List<PresetCycle>> =
+    ctx.dataStore.data.map { prefs ->
+        prefs[PRESET_CYCLES_KEY]
+            ?.mapNotNull { runCatching { json.decodeFromString<PresetCycle>(it) }.getOrNull() }
+            ?: emptyList()
+    }

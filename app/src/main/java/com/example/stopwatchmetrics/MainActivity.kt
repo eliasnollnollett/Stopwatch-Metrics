@@ -79,6 +79,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
@@ -152,7 +153,7 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
-import androidx.compose.material.icons.filled.Refresh
+import kotlinx.serialization.Serializable
 
 
 // --- Helper Functions & Data Classes ---
@@ -2881,8 +2882,21 @@ class MainActivity : ComponentActivity() {
 
 
     // ── NEW: Hold all saved presets in memory (you can later persist via DataStore) ──
-    private var allPresetCycles by mutableStateOf<List<PresetCycle>>(emptyList())
+    private var allPresetCycles by mutableStateOf(
+        listOf(
+            PresetCycle(name = "Elevator", steps = listOf("In", "Up", "Out", "Down")),
+            // (You can add more defaults here if you like)
+        )
+    )
     private var activeCycle      by mutableStateOf<ActiveCycle?>(null)
+
+    private fun defaultCycles(): List<PresetCycle> {
+        return listOf(
+            PresetCycle(name = "Elevator", steps = listOf("In", "Up", "Out", "Down")),
+            PresetCycle(name = "CoffeeBreak", steps = listOf("Pour", "Stir", "Sip", "Done"))
+            // …add any other built‐in presets you’d like…
+        )
+    }
 
     private var isDirty by mutableStateOf(false)
 
@@ -2916,7 +2930,11 @@ class MainActivity : ComponentActivity() {
 
     private fun saveAllPresetCycles(newList: List<PresetCycle>) {
         allPresetCycles = newList
-        // TODO: persist to DataStore or wherever you like
+
+        // Persist on a background thread:
+        lifecycleScope.launch {
+            saveAllPresetCycles(this@MainActivity, newList)
+        }
     }
 
 
@@ -3092,11 +3110,55 @@ class MainActivity : ComponentActivity() {
             delay(50) // wait briefly so the change is registered
             currentTimeFormatSetting = TimeFormatSetting(useShortFormat = storedFormat)
             Log.d("DEBUG", "Forced currentTimeFormatSetting refresh on startup: ${currentTimeFormatSetting.useShortFormat}")
+
+
+            readAllPresetCycles(this@MainActivity).collect { savedList ->
+                if (savedList.isEmpty()) {
+                    // First‐run (or user cleared everything) -> seed built‐in defaults
+                    val builtIns = defaultCycles()
+                    allPresetCycles = builtIns
+
+                    // Persist them so next time DataStore is not empty
+                    saveAllPresetCycles(this@MainActivity, builtIns)
+                } else {
+                    // We already have at least one preset stored -> use it
+                    allPresetCycles = savedList
+                }
+            }
+
+
+
         }
 
         clearOldExportsCache()
 
         val activityInstance = this
+
+        // Step A: define your built-in defaults
+        val defaultCycles = listOf(
+            PresetCycle("Elevator", listOf("In", "Up", "Out", "Down")),
+            PresetCycle("Process", listOf("In", "Load", "Process", "Unload", "Out"))
+        )
+
+        // Step B: immediately read “allPresetCycles” from DataStore (or wherever you persist),
+        // and if nothing’s there, seed it with defaults.
+        lifecycleScope.launch {
+            // Suppose you had a Flow<List<PresetCycle>> called `readPresetCycles(...)`.
+            // For simplicity, let’s just check if your in-memory `allPresetCycles` is still empty:
+            if (allPresetCycles.isEmpty()) {
+                // First-run (or no saved presets): populate with defaults
+                allPresetCycles = defaultCycles
+                // TODO: write `allPresetCycles` into DataStore here so that next time it’s restored
+            } else {
+                // You already have saved cycles (merging defaults if you wish):
+                val saved = allPresetCycles
+                // If you want to ensure defaults are always present—merge them if missing:
+                val merged = defaultCycles
+                    .filter { builtIn -> saved.none { it.name == builtIn.name } }
+                    .plus(saved)
+                allPresetCycles = merged
+            }
+        }
 
         cameraResultLauncher =
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -3271,6 +3333,16 @@ class MainActivity : ComponentActivity() {
 
                                 onLoadCycle = { chosenPreset ->
                                     activeCycle = ActiveCycle(preset = chosenPreset, currentIndex = 0)
+
+                // Now “prime” the live point (if one already exists):
+                                    currentActivePoint?.let { live ->
+                                        // Only do this if the stopwatch is already running or paused and there's a live point in flight:
+                                        val firstStep = activeCycle!!.preset.steps.getOrNull(activeCycle!!.currentIndex)
+                                        if (firstStep != null) {
+                                            currentActivePoint = live.copy(comment = firstStep)
+                                            activeCycle!!.currentIndex++
+                                        }
+                                    }
                                 },
                                 onSaveAllCycles = { updatedList ->
                                     // Write back the updated list of presets
@@ -3530,50 +3602,55 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun newPoint() {
-        // If no time has elapsed yet, treat this as starting a new cycle without recording a zero point.
+        // If no time has elapsed yet, treat this as “just start the stop watch without recording a zero‐point.”
         if (_elapsedTime.value == 0L) {
             if (!_isRunning.value) {
-                toggleStopwatch() // Start the timer fresh
+                toggleStopwatch()
+            }
+            // If a preset cycle is already loaded, we should immediately assign its first step
+            activeCycle?.let { active ->
+                val firstStep = active.preset.steps.getOrNull(active.currentIndex)
+                if (firstStep != null) {
+                    // The currentActivePoint should already exist (because toggleStopwatch() created it).
+                    // So we copy its comment = firstStep, then bump to next index.
+                    currentActivePoint = currentActivePoint?.copy(comment = firstStep)
+                    active.currentIndex++
+                }
             }
             return
         }
 
-        // If there is a loaded preset with steps, copy the next step into this point's comment:
-        val commentForThisPoint = activeCycle?.let { active ->
-            val idx = active.currentIndex
-            // safety: if idx goes out of bounds, clamp to last step
-            val stepLabel = active.preset.steps.getOrNull(idx) ?: ""
-            // advance index for next point
-            active.currentIndex = (idx + 1).coerceAtMost(active.preset.steps.lastIndex)
-            stepLabel
-        } ?: ""
+        // ── Otherwise, there *is* some elapsed time on the existing live point:
+        //   1) “Commit” the old live point into history:
+        currentActivePoint?.let { _points.add(it) }
 
-        // Record the current active point, injecting the comment from preset:
-        currentActivePoint?.let { live ->
-            val filled = live.copy(
-                comment = commentForThisPoint,
-                elapsedTime = live.elapsedTime
-            )
-            _points.add(filled)
-        }
-
-        // Reset timing variables for a new measurement cycle.
+        //   2) Reset timing so we start a brand‐new live point:
         startTime = System.currentTimeMillis()
         accumulatedTime = 0L
         _elapsedTime.value = 0L
 
-        // Create a brand‐new “live” point. Its comment will be assigned on the next newPoint().
+        //   3) Create the brand‐new live point with zero elapsed time:
         currentActivePoint = PointData(
-            elapsedTime     = 0L,
-            pointStartTime  = startTime,
-            comment         = ""  // we’ll fill it next time newPoint() is called
+            elapsedTime = 0L,
+            pointStartTime = startTime
         )
 
-        // If paused, start the stopwatch for the new cycle:
+        //   4) **IMMEDIATELY** assign that new live point’s comment from the next step in the cycle:
+        activeCycle?.let { active ->
+            val stepText = active.preset.steps.getOrNull(active.currentIndex)
+            if (stepText != null) {
+                currentActivePoint = currentActivePoint!!.copy(comment = stepText)
+                active.currentIndex++
+            }
+        }
+
+        //   5) If the stopwatch was paused (because maybe you tapped “Pause” right before),
+        //      start it again so the timer keeps going:
         if (!_isRunning.value) {
             toggleStopwatch()
         }
     }
+
 
     private fun resetStopwatch() {
         _isRunning.value = false
