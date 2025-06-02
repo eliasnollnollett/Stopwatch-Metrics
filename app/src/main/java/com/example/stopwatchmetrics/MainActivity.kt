@@ -46,6 +46,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,7 +57,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -95,6 +95,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -151,8 +152,7 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
-import androidx.compose.material3.TextField
-
+import androidx.compose.material.icons.filled.Refresh
 
 
 // --- Helper Functions & Data Classes ---
@@ -181,11 +181,7 @@ fun formatPointInTime(timeMs: Long): String {
     return formatter.format(date)
 }
 
-/** A single user‐defined cycle: a name plus an ordered list of step labels. */
-data class PresetCycle(
-    val name: String,
-    val steps: List<String>
-)
+
 
 /** Tracks which step index we’re currently on, for a loaded PresetCycle. */
 data class ActiveCycle(
@@ -200,15 +196,6 @@ data class PointData(
     var imagePath: String? = null
 )
 
-
-data class SheetSettings(
-    val showPoint: Boolean = true,
-    val showTime: Boolean = true,
-    val showTMU: Boolean = false,
-    val showStartTime: Boolean = true,
-    val showComment: Boolean = true,
-    val showImage: Boolean = true,
-)
 
 fun generateCSV(
     points: List<PointData>,
@@ -1703,18 +1690,19 @@ fun CommentDialogUnified(
 @Composable
 fun PresetCycleListDialog(
     allCycles: List<PresetCycle>,
+    activeCycle: ActiveCycle?,          // <-- pass in current ActiveCycle
     onDismiss: () -> Unit,
     onLoad: (PresetCycle) -> Unit,
-    onCreateNew: () -> Unit
+    onCreateNew: () -> Unit,
+    onClear: () -> Unit               // <-- new “Clear preset” callback
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Choose a Preset Cycle") },
         text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 200.dp, max = 300.dp)
+            Column(modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 200.dp, max = 300.dp)
             ) {
                 if (allCycles.isEmpty()) {
                     Text("No presets saved yet.")
@@ -1742,7 +1730,10 @@ fun PresetCycleListDialog(
                         }
                     }
                 }
+
                 Spacer(Modifier.height(12.dp))
+
+                // “Add New Preset” button
                 OutlinedButton(
                     onClick = onCreateNew,
                     modifier = Modifier.fillMaxWidth()
@@ -1751,32 +1742,35 @@ fun PresetCycleListDialog(
                     Spacer(Modifier.width(8.dp))
                     Text("Add New Preset")
                 }
+
+                Spacer(Modifier.height(16.dp))
+
+                // “Clear preset” button (only shown if activeCycle != null)
+                if (activeCycle != null) {
+                    OutlinedButton(
+                        onClick = onClear,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Clear preset")
+                        Spacer(Modifier.width(8.dp))
+                        Text("Clear Preset")
+                    }
+                }
             }
         },
         confirmButton = {},
-
-        // ─── Insert a “Clear Preset” button here ───
         dismissButton = {
-            Column {
-                OutlinedButton(
-                    onClick = {
-                        // Clear the currently‐loaded preset
-                        onLoad(PresetCycle(name = "", steps = emptyList()))
-                        onDismiss()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)
-                ) {
-                    Text("Clear Preset")
-                }
-                OutlinedButton(onClick = onDismiss) {
-                    Text("Cancel")
-                }
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel")
             }
         }
     )
 }
+
+
 
 
 @Composable
@@ -2250,6 +2244,7 @@ fun MainScreen(
     onLoadCycle: (PresetCycle) -> Unit,
     onSaveAllCycles: (List<PresetCycle>) -> Unit,
     allPresetCycles: List<PresetCycle>,
+    onClearPreset: () -> Unit,
 ) {
 
     val context = LocalContext.current
@@ -2470,49 +2465,47 @@ fun MainScreen(
                     },
 
                     // ─── PAGE 1: PPI + timer + play/reset row + camera/comment row + point‑table ───
-                    // ─── PAGE 1 ───
+
                     {
                         Box(modifier = Modifier.fillMaxSize()) {
                             Column(
-                                modifier            = Modifier
+                                modifier = Modifier
                                     .fillMaxSize()
                                     .padding(top = 16.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Spacer(Modifier.height(16.dp))
 
-                                // ── TOP ROW: [Preset info]  [PPI @120dp] ──
+                                // ── TOP ROW: [Preset info]   [PPI @120dp]   [Configure Presets @ end] ──
                                 Row(
                                     modifier          = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // LEFT: Preset info
+                                    // LEFT: minimal‐size “Preset info”
                                     Column(
                                         modifier = Modifier
-                                            .wrapContentWidth()
+
                                             .padding(start = 8.dp)
                                     ) {
                                         if (activeCycle != null) {
                                             Text(
-                                                text  = "Preset loaded: ${activeCycle!!.preset.name}",
-                                                style = MaterialTheme.typography.bodyMedium
+                                                text = "Preset: ${activeCycle.preset.name}",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onBackground
                                             )
                                             Text(
-                                                text  = "Next step: ${
-                                                    activeCycle!!.preset.steps
-                                                        .getOrNull(activeCycle!!.currentIndex) ?: ""
-                                                }",
-                                                style = MaterialTheme.typography.bodyMedium
+                                                text = "Next: ${activeCycle.preset.steps.getOrNull(activeCycle.currentIndex) ?: ""}",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onBackground
                                             )
-                                            Spacer(Modifier.height(8.dp))
-                                            OutlinedButton(onClick = {
-                                                activeCycle?.let { active ->
-                                                    active.currentIndex = 0
-                                                }
-                                            }) {
-                                                Text("New Cycle")
+                                            Spacer(Modifier.height(4.dp))
+                                            OutlinedButton(
+                                                onClick = { activeCycle.currentIndex = 0 },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Text("New Cycle", fontSize = 12.sp)
                                             }
                                         }
                                     }
@@ -2521,22 +2514,38 @@ fun MainScreen(
 
                                     // CENTER: PPI fixed at 120dp
                                     Box(
-                                        modifier         = Modifier.size(120.dp),
+                                        modifier = Modifier.size(120.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         PointProgressIndicator(
-                                            elapsedTime           = elapsedTime,
-                                            points                = displayPoints,
-                                            centerCircleRadius    = 3.dp,
+                                            elapsedTime = elapsedTime,
+                                            points = displayPoints,
+                                            centerCircleRadius = 3.dp,
                                             pointerLengthFraction = 0.8f,
-                                            modifier              = Modifier.matchParentSize()
+                                            modifier = Modifier.matchParentSize()
                                         )
                                     }
 
                                     Spacer(modifier = Modifier.weight(1f))
+
+                                    // RIGHT: small “Configure Presets” icon button
+                                    IconButton(
+                                        onClick = { showPresetListDialog = true },
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .padding(end = 8.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = "Configure Presets",
+                                            tint = MaterialTheme.colorScheme.onBackground
+                                        )
+                                    }
                                 }
 
                                 Spacer(Modifier.height(12.dp))
+
+                                // ── PLAY/PAUSE  |  NEW POINT buttons under PPI ──
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -2568,26 +2577,15 @@ fun MainScreen(
                                             .padding(8.dp)
                                     )
                                 }
+
                                 Spacer(Modifier.height(12.dp))
 
-                                // ── “Configure Presets” BUTTON ──
-                                Button(
-                                    onClick  = { showPresetListDialog = true },
+                                // ── COMMENT / IMAGE TOGGLES above the point‐table ──
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp)
-                                ) {
-                                    Text("Configure Presets")
-                                }
-
-                                Spacer(Modifier.height(12.dp))
-
-                                // ── COMMENT / IMAGE TOGGLES (now above the PointTable) ──
-                                Row(
-                                    modifier               = Modifier
-                                        .fillMaxWidth()
                                         .padding(horizontal = 16.dp),
-                                    horizontalArrangement  = Arrangement.SpaceEvenly
+                                    horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
                                     IconButton(
                                         onClick = {
@@ -2656,13 +2654,13 @@ fun MainScreen(
 
                                 // ── POINT TABLE ──
                                 PointTable(
-                                    points                = allPoints,
-                                    currentActivePoint    = currentActivePoint,
-                                    timeFormatSetting     = timeFormatSetting,
-                                    sheetSettings         = sheetSettings,
-                                    onCommentClick        = { selectedPointForComment = it },
-                                    onImageClick          = { onImageClick(it) },
-                                    onAddCommentForLive   = onAddComment,
+                                    points = allPoints,
+                                    currentActivePoint = currentActivePoint,
+                                    timeFormatSetting = timeFormatSetting,
+                                    sheetSettings = sheetSettings,
+                                    onCommentClick = { selectedPointForComment = it },
+                                    onImageClick = { onImageClick(it) },
+                                    onAddCommentForLive = onAddComment,
                                     onCaptureImageForLive = onCaptureImage
                                 )
                             }
@@ -2789,27 +2787,33 @@ fun MainScreen(
     // inside MainScreen – or wherever you show the tips dialog
 
 
+    // ── DIALOG: Show PresetCycleListDialog when needed ──
     if (showPresetListDialog) {
         PresetCycleListDialog(
-            allCycles = allPresetCycles,
-            onDismiss = { showPresetListDialog = false },
-            onLoad    = { chosen ->
+            allCycles   = allPresetCycles,
+            activeCycle = activeCycle,                 // pass current ActiveCycle
+            onDismiss   = { showPresetListDialog = false },
+            onLoad      = { chosen ->
                 onLoadCycle(chosen)
                 showPresetListDialog = false
             },
             onCreateNew = {
                 showPresetListDialog = false
-                showNewPresetDialog  = true
+                showNewPresetDialog = true
+            },
+            onClear     = {
+                onClearPreset()                        // user‐supplied clears the ActiveCycle
+                showPresetListDialog = false
             }
         )
     }
 
+    // ── DIALOG: “New Preset” (if needed) ──
     if (showNewPresetDialog) {
         NewPresetDialog(
             existingNames = allPresetCycles.map { it.name },
             onDismiss     = { showNewPresetDialog = false },
             onSave        = { newPreset ->
-                // Build a fresh list that replaces any same‐name entry:
                 val updated = allPresetCycles.filter { it.name != newPreset.name } + newPreset
                 onSaveAllCycles(updated)
                 onLoadCycle(newPreset)
@@ -2878,9 +2882,7 @@ class MainActivity : ComponentActivity() {
 
     // ── NEW: Hold all saved presets in memory (you can later persist via DataStore) ──
     private var allPresetCycles by mutableStateOf<List<PresetCycle>>(emptyList())
-
-    // We also need to track the currently loaded ActiveCycle:
-    private var activeCycle by mutableStateOf<ActiveCycle?>(null)
+    private var activeCycle      by mutableStateOf<ActiveCycle?>(null)
 
     private var isDirty by mutableStateOf(false)
 
@@ -3158,6 +3160,10 @@ class MainActivity : ComponentActivity() {
                 val timeFormatSetting = TimeFormatSetting(useShortFormat = useShortFormat)
                 Log.d("DEBUG", "Using TimeFormatSetting: ${timeFormatSetting.useShortFormat}")
 
+
+                val allPresetCyclesFlow = readAllPresetCycles(context)
+                val allPresetCycles by allPresetCyclesFlow.collectAsState(initial = emptyList())
+
                 // Read Sheet settings and Fast Comments settings.
                 val sheetSettingsFlow = readSheetSettings(context)
                 val currentSheetSettings by sheetSettingsFlow.collectAsState(initial = SheetSettings())
@@ -3193,85 +3199,60 @@ class MainActivity : ComponentActivity() {
                     when (currentScreen) {
                         Screen.Stopwatch -> {
                             MainScreen(
-                                elapsedTime            = elapsedTime.value,
-                                isRunning              = isRunning.value,
+                                elapsedTime = elapsedTime.value,
+                                isRunning = isRunning.value,
                                 points = if (isRunning.value && currentActivePoint != null)
                                     points + currentActivePoint!!
                                 else
                                     points,
-                                currentActivePoint     = currentActivePoint,
-                                timeFormatSetting      = timeFormatSetting,
-                                sheetSettings          = currentSheetSettings,
-                                activeDialog           = activeDialog,
-                                isDirty = activityInstance.isDirty,
+                                currentActivePoint = currentActivePoint,
+                                timeFormatSetting = timeFormatSetting,
+                                sheetSettings = currentSheetSettings,
+                                activeDialog = activeDialog,
+                                isDirty = isDirty,
 
-                                onActiveDialogChange   = { activeDialog = it },
-                                onToggleStopwatch      = {
-                                    toggleStopwatch()
-                                    activityInstance.isDirty = true
+                                onActiveDialogChange = { activeDialog = it },
+                                onToggleStopwatch = { toggleStopwatch(); isDirty = true },
+                                onNewPoint = { newPoint(); isDirty = true },
+                                onResetRequest = {
+                                    if (isDirty) activeDialog = ActiveDialog.ConfirmReset
+                                    else resetStopwatch()
                                 },
-                                onNewPoint             = {
-                                    newPoint()
-                                    activityInstance.isDirty = true
-                                },
-                                onResetRequest         = {
-                                    if (activityInstance.isDirty)
-                                        activeDialog = ActiveDialog.ConfirmReset
-                                    else
-                                        resetStopwatch()
-                                },
-                                onFileBrowserClick     = { currentScreen = Screen.FileBrowser },
-                                onSettingsClick        = { currentScreen = Screen.Settings },
-                                onPrepareSaveShare     = {
+                                onFileBrowserClick = { currentScreen = Screen.FileBrowser },
+                                onSettingsClick = { currentScreen = Screen.Settings },
+                                onPrepareSaveShare = {
                                     pendingCsvContent = generateCSV(points, sheetSettings, currentTimeFormatSetting)
                                     activeDialog = ActiveDialog.SaveShare
                                 },
-                                onShare                = { sendEmail() },
-                                onRenameConfirm        = { newName ->
-                                    saveCsvFile(newName)
-                                    isDirty = false
-                                    activeDialog = ActiveDialog.None
-                                },
-                                onCaptureImage         = { captureImage() },
-                                onAddComment           = { showCommentDialog = true },
-                                onEditFastComments = {
-                                          showCommentDialog        = false
-                                          showFastCommentsEditDialog = true
-                                        },
-                                onUndo                 = {
-                                    undoLastPoint()
-                                    activityInstance.isDirty = true
-                                },
+                                onShare = { sendEmail() },
+                                onRenameConfirm = { newName -> saveCsvFile(newName); isDirty = false; activeDialog = ActiveDialog.None },
+                                onCaptureImage = { captureImage() },
+                                onAddComment = { showCommentDialog = true },
+                                onEditFastComments = { showCommentDialog = false; showFastCommentsEditDialog = true },
+                                onUndo = { undoLastPoint(); isDirty = true },
 
-                                fastCommentsSettings   = currentFastComments,
+                                fastCommentsSettings = currentFastComments,
 
                                 onToggleImageColumn = {
                                     val new = sheetSettings.copy(showImage = !sheetSettings.showImage)
                                     sheetSettings = new
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        saveSheetSettings(context, new)
-                                    }
+                                    CoroutineScope(Dispatchers.IO).launch { saveSheetSettings(context, new) }
                                 },
                                 onToggleCommentColumn = {
                                     val new = sheetSettings.copy(showComment = !sheetSettings.showComment)
                                     sheetSettings = new
-                                    CoroutineScope(Dispatchers.IO).launch {
-                                        saveSheetSettings(context, new)
-                                    }
+                                    CoroutineScope(Dispatchers.IO).launch { saveSheetSettings(context, new) }
                                 },
 
-
-                                onImageClick           = { point ->
+                                onImageClick = { point ->
                                     pendingImageUpdatePoint = point
                                     showImageUpdateDialog = true
                                 },
                                 onUpdatePointComment = { point, newComment ->
                                     val idx = _points.indexOf(point)
                                     if (idx != -1) {
-                                        // historical point – replace in the list
                                         _points[idx] = point.copy(comment = newComment)
                                     } else if (currentActivePoint?.pointStartTime == point.pointStartTime) {
-                                        // live (paused) point – replace the state var
                                         currentActivePoint = point.copy(comment = newComment)
                                     }
                                     isDirty = true
@@ -3286,17 +3267,22 @@ class MainActivity : ComponentActivity() {
                                     isDirty = true
                                 },
 
-                                activeCycle            = activeCycle,
+                                activeCycle = activeCycle,
 
                                 onLoadCycle = { chosenPreset ->
                                     activeCycle = ActiveCycle(preset = chosenPreset, currentIndex = 0)
                                 },
                                 onSaveAllCycles = { updatedList ->
-                                            lifecycleScope.launch {
-                                                    saveAllPresetCycles(updatedList)
-                                                }
-                                        },
-                                allPresetCycles = allPresetCycles
+                                    // Write back the updated list of presets
+                                    CoroutineScope(Dispatchers.IO).launch {
+                                        saveAllPresetCycles(context, updatedList)
+                                    }
+                                },
+                                allPresetCycles = allPresetCycles,
+
+                                onClearPreset = {
+                                    activeCycle = null
+                                }
                             )
                         }
                         Screen.Settings -> {
