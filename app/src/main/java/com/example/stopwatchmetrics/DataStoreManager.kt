@@ -186,3 +186,17 @@ fun readAllPresetCycles(ctx: Context): Flow<List<PresetCycle>> =
             ?.mapNotNull { runCatching { json.decodeFromString<PresetCycle>(it) }.getOrNull() }
             ?: emptyList()
     }
+
+
+/* ────────────────────────────────────────────── *
+ *  PRESET‑CYCLE  JSON  IMPORT / EXPORT HELPERS   *
+ * ────────────────────────────────────────────── */
+
+private val jsonPretty = Json { prettyPrint = true }
+
+fun List<PresetCycle>.toJsonBytes(): ByteArray =
+    jsonPretty.encodeToString(this).encodeToByteArray()
+
+fun decodePresetCycles(bytes: ByteArray): List<PresetCycle>? =
+    runCatching { jsonPretty.decodeFromString<List<PresetCycle>>(bytes.decodeToString()) }
+        .getOrNull()

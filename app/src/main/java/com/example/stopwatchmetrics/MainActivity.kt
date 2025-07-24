@@ -153,6 +153,10 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
+import android.app.AlertDialog
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import androidx.compose.runtime.rememberCoroutineScope
 
 
 // --- Helper Functions & Data Classes ---
@@ -1027,6 +1031,77 @@ fun DeleteConfirmationDialog(
 }
 
 @Composable
+fun PresetExportPickerDialog(
+    all: List<PresetCycle>,
+    onDismiss: () -> Unit,
+    onExport: (List<PresetCycle>) -> Unit
+) {
+    val exportAll     = remember { mutableStateOf(true) }
+    val selectedSet   = remember { mutableStateOf(all.map { it.name }.toMutableSet()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Export Presets") },
+        text = {
+            Column(Modifier.heightIn(max = 300.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = exportAll.value,
+                        onCheckedChange = { checked ->
+                            exportAll.value = checked
+                            if (checked) selectedSet.value = all.map { it.name }.toMutableSet()
+                        }
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Export all presets")
+                }
+                Spacer(Modifier.height(8.dp))
+                LazyColumn {
+                    items(all) { p ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    exportAll.value = false
+                                    if (!selectedSet.value.add(p.name))
+                                        selectedSet.value.remove(p.name)
+                                }
+                                .padding(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = selectedSet.value.contains(p.name),
+                                onCheckedChange = { chk ->
+                                    exportAll.value = false
+                                    if (chk) selectedSet.value.add(p.name)
+                                    else     selectedSet.value.remove(p.name)
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(p.name)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = selectedSet.value.isNotEmpty(),
+                onClick = {
+                    val list = all.filter { selectedSet.value.contains(it.name) }
+                    onExport(list)
+                    onDismiss()
+                }
+            ) { Text("Export") }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+
+@Composable
 fun CsvTable(csvContent: String, sheetSettings: SheetSettings) {
     // Split CSV content into lines.
     val allRows = csvContent.split("\n").filter { it.isNotBlank() }
@@ -1685,24 +1760,27 @@ fun CommentDialogUnified(
 }
 
 
-
-
 @Composable
 fun PresetCycleListDialog(
-    allCycles: List<PresetCycle>,
-    activeCycle: ActiveCycle?,          // <-- pass in current ActiveCycle
-    onDismiss: () -> Unit,
-    onLoad: (PresetCycle) -> Unit,
-    onCreateNew: () -> Unit,
-    onClear: () -> Unit               // <-- new “Clear preset” callback
+    allCycles   : List<PresetCycle>,
+    activeCycle : ActiveCycle?,
+    onDismiss   : () -> Unit,
+    onLoad      : (PresetCycle) -> Unit,
+    onCreateNew : () -> Unit,
+    onClear     : () -> Unit,
+    onImport    : () -> Unit,
+    onExport    : () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Choose a Preset Cycle") },
+
+        /* ----------  MAIN CONTENT  ---------- */
         text = {
-            Column(modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 200.dp, max = 300.dp)
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 200.dp, max = 300.dp)
             ) {
                 if (allCycles.isEmpty()) {
                     Text("No presets saved yet.")
@@ -1761,12 +1839,29 @@ fun PresetCycleListDialog(
                 }
             }
         },
-        confirmButton = {},
-        dismissButton = {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Cancel")
+        /* ----------  BUTTON BAR  ---------- */
+        confirmButton = {                      // ← put the whole row here
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onImport,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Import") }
+
+                OutlinedButton(
+                    onClick = onExport,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Export") }
+
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f)
+                ) { Text("Cancel") }
             }
-        }
+        },
+        dismissButton = {}                     // nothing here
     )
 }
 
@@ -2245,7 +2340,9 @@ fun MainScreen(
     onSaveAllCycles: (List<PresetCycle>) -> Unit,
     allPresetCycles: List<PresetCycle>,
     onClearPreset: () -> Unit,
-) {
+    onConfigurePresets: () -> Unit,
+
+    ) {
 
     val context = LocalContext.current
 
@@ -2530,8 +2627,8 @@ fun MainScreen(
 
                                     // RIGHT: small “Configure Presets” icon button
                                     IconButton(
-                                        onClick = { showPresetListDialog = true },
-                                        modifier = Modifier
+                                        onClick = onConfigurePresets,    // <- call the callback
+                                        modifier = Modifier.size(32.dp)
                                             .size(32.dp)
                                             .padding(end = 8.dp)
                                     ) {
@@ -2786,42 +2883,6 @@ fun MainScreen(
     }
     // inside MainScreen – or wherever you show the tips dialog
 
-
-    // ── DIALOG: Show PresetCycleListDialog when needed ──
-    if (showPresetListDialog) {
-        PresetCycleListDialog(
-            allCycles   = allPresetCycles,
-            activeCycle = activeCycle,                 // pass current ActiveCycle
-            onDismiss   = { showPresetListDialog = false },
-            onLoad      = { chosen ->
-                onLoadCycle(chosen)
-                showPresetListDialog = false
-            },
-            onCreateNew = {
-                showPresetListDialog = false
-                showNewPresetDialog = true
-            },
-            onClear     = {
-                onClearPreset()                        // user‐supplied clears the ActiveCycle
-                showPresetListDialog = false
-            }
-        )
-    }
-
-    // ── DIALOG: “New Preset” (if needed) ──
-    if (showNewPresetDialog) {
-        NewPresetDialog(
-            existingNames = allPresetCycles.map { it.name },
-            onDismiss     = { showNewPresetDialog = false },
-            onSave        = { newPreset ->
-                val updated = allPresetCycles.filter { it.name != newPreset.name } + newPreset
-                onSaveAllCycles(updated)
-                onLoadCycle(newPreset)
-                showNewPresetDialog = false
-            }
-        )
-    }
-
     if (showTipsDialog) {
         AlertDialog(
             onDismissRequest = { showTipsDialog = false },
@@ -2936,6 +2997,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /*  ──  PRESET  IMPORT / EXPORT  ─────────────── */
+    private lateinit var exportPresetsLauncher: ActivityResultLauncher<Intent>
+    private lateinit var importPresetsLauncher: ActivityResultLauncher<Array<String>>
+
 
 
     // Function to capture an image.
@@ -3037,6 +3102,78 @@ class MainActivity : ComponentActivity() {
         Toast.makeText(this, "CSV file saved as $finalName", Toast.LENGTH_SHORT).show()
     }
 
+    private fun handleImportedPresets(incoming: List<PresetCycle>) {
+        lifecycleScope.launch {
+            var merged = allPresetCycles.toMutableList()
+            var updated = 0
+            var added   = 0
+            for (preset in incoming) {
+                val clashIdx = merged.indexOfFirst { it.name == preset.name }
+                if (clashIdx == -1) {
+                    merged += preset
+                    added++
+                } else {
+                    // prompt the user synchronously on the main thread
+                    val choice = suspendCancellableCoroutine<String> { cont ->
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("‘${preset.name}’ already exists")
+                            .setItems(arrayOf("Keep old", "Overwrite", "Keep both")) { _, which ->
+                                cont.resume(
+                                    when (which) {
+                                        0 -> "keep-old"
+                                        1 -> "overwrite"
+                                        else -> "keep-both"
+                                    }, null)
+                            }
+                            .setCancelable(false)
+                            .show()
+                    }
+                    when (choice) {
+                        "overwrite" -> { merged[clashIdx] = preset; updated++ }
+                        "keep-both" -> {
+                            var suffix = 2
+                            var newName: String
+                            do {
+                                newName = "${preset.name} ($suffix)"
+                                suffix++
+                            } while (merged.any { it.name == newName })
+                            merged += preset.copy(name = newName)
+                            added++
+                        }
+                    } // keep‑old → nothing
+                }
+            }
+
+            // persist + update UI
+            saveAllPresetCycles(this@MainActivity, merged)
+            allPresetCycles = merged
+
+            ToastHelper.showToast(
+                this@MainActivity,
+                "Imported: $added new, $updated updated, ${incoming.size - added - updated} skipped"
+            )
+        }
+    }
+
+    private fun exportSelectedPresets(selected: List<PresetCycle>) {
+        clearOldExportsCache()   // reuse your existing cache cleaner
+
+        val file = File(cacheDir, "preset_cycles_${System.currentTimeMillis()}.presetcycles.json")
+        file.writeBytes(selected.toJsonBytes())
+
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newUri(contentResolver, file.name, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        exportPresetsLauncher.launch(Intent.createChooser(send, "Share presets"))
+    }
+
+
+
     private fun undoLastPoint() {
         if (_points.isNotEmpty()) {
             // Remove the latest recorded point
@@ -3131,6 +3268,31 @@ class MainActivity : ComponentActivity() {
 
         clearOldExportsCache()
 
+        /* ----------  export launcher (share sheet)  ---------- */
+        exportPresetsLauncher =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { /* no‑op */ }
+
+        /* ----------  import launcher (open document) ---------- */
+        importPresetsLauncher =
+            registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+                uri ?: return@registerForActivityResult   // ⬅️  old: return@OpenDocument
+
+                val bytes = contentResolver.openInputStream(uri)?.readBytes()
+                if (bytes == null || bytes.size > 1_000_000) {
+                    ToastHelper.showToast(this, "File too large or unreadable")
+                    return@registerForActivityResult       // ⬅️  old: return@OpenDocument
+                }
+
+                val incoming = decodePresetCycles(bytes)
+                if (incoming == null) {
+                    ToastHelper.showToast(this, "File is not a valid preset list")
+                    return@registerForActivityResult       // ⬅️  old: return@OpenDocument
+                }
+
+                handleImportedPresets(incoming)
+            }
+
+
         val activityInstance = this
 
         // Step A: define your built-in defaults
@@ -3191,6 +3353,8 @@ class MainActivity : ComponentActivity() {
                 // Get the context for DataStore access.
                 val context = LocalContext.current
 
+                val coroutineScope   = rememberCoroutineScope()   // ← add this
+
                 val useDarkMode by readDarkModeSetting(context)
                     .collectAsState(initial = true)
 
@@ -3207,6 +3371,10 @@ class MainActivity : ComponentActivity() {
                 var showCommentDialog by remember { mutableStateOf(false) }
                 var showImageUpdateDialog by remember { mutableStateOf(false) }
                 var showFastCommentsEditDialog by remember { mutableStateOf(false) }
+
+                var showPresetDialog           by remember { mutableStateOf(false) }
+                var showNewPresetDialog by remember { mutableStateOf(false) }
+                var showExportPicker           by remember { mutableStateOf(false) }
 
                 // Define your capture image action.
                 val captureImage: () -> Unit = {
@@ -3353,7 +3521,8 @@ class MainActivity : ComponentActivity() {
 
                                 onClearPreset = {
                                     activeCycle = null
-                                }
+                                },
+                                onConfigurePresets = { showPresetDialog = true },
                             )
                         }
                         Screen.Settings -> {
@@ -3458,6 +3627,79 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
+
+                    if (showPresetDialog) {
+                        PresetCycleListDialog(
+                            allCycles   = allPresetCycles,
+                            activeCycle = activeCycle,
+                            onDismiss   = { showPresetDialog = false },
+                            onLoad = { chosen ->
+                                activeCycle = ActiveCycle(chosen, currentIndex = 0)
+                                // prime live point if needed (same code you had)
+                                currentActivePoint?.let { live ->
+                                    val first = activeCycle!!.preset.steps.getOrNull(0)
+                                    if (first != null) currentActivePoint = live.copy(comment = first)
+                                }
+                                showPresetDialog = false
+                            },
+
+                            onCreateNew = {
+                                showPresetDialog   = false
+                                showNewPresetDialog = true        // show your “create preset” dialog
+                            },
+
+                            onClear = {
+                                activeCycle = null
+                                showPresetDialog = false
+                            },
+
+
+                            /* NEW callbacks */
+                            onImport    = {
+                                /* launches the ActivityResult you registered in onCreate() */
+                                importPresetsLauncher.launch(arrayOf("application/json"))
+                                showPresetDialog = false        // close the list
+                            },
+                            onExport    = {
+                                showExportPicker = true         // open picker dialog
+                                showPresetDialog = false
+                            }
+                        )
+                    }
+
+
+                    /* showExportPicker handled exactly as in my previous snippet */
+                    if (showExportPicker) {
+                        PresetExportPickerDialog(
+                            all      = allPresetCycles,
+                            onDismiss= { showExportPicker = false },
+                            onExport = { list ->
+                                exportSelectedPresets(list)
+                                showExportPicker = false
+                            }
+                        )
+                    }
+
+                    if (showNewPresetDialog) {
+                        NewPresetDialog(
+                            existingNames = allPresetCycles.map { it.name },
+                            onDismiss = { showNewPresetDialog = false },
+                            onSave = { newPreset ->
+                                val merged = allPresetCycles
+                                    .filterNot { it.name == newPreset.name } + newPreset
+
+                                // Persist off the main thread
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    saveAllPresetCycles(context, merged)   // suspend fun inside coroutine
+                                }
+
+                                activeCycle       = ActiveCycle(newPreset, 0)
+                                showNewPresetDialog = false
+                            }
+                        )
+                    }
+
+
 
                     if (showFastCommentsEditDialog) {
                         FastCommentsEditDialog(
