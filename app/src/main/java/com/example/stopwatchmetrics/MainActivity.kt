@@ -154,6 +154,7 @@ import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
 import android.app.AlertDialog
+import androidx.compose.material.icons.filled.Undo
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1767,42 +1768,50 @@ fun PresetCycleListDialog(
     onDismiss   : () -> Unit,
     onLoad      : (PresetCycle) -> Unit,
     onCreateNew : () -> Unit,
-    onClear     : () -> Unit,
+    onUnload    : () -> Unit,
+    onRequestDelete : (PresetCycle) -> Unit,   // ← NEW: fire *before* real delete
     onImport    : () -> Unit,
     onExport    : () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Choose a Preset Cycle") },
-
-        /* ----------  MAIN CONTENT  ---------- */
         text = {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 200.dp, max = 300.dp)
+                    .heightIn(min = 250.dp, max = 400.dp)   // overall height cap
             ) {
                 if (allCycles.isEmpty()) {
                     Text("No presets saved yet.")
                 } else {
-                    LazyColumn {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)                         // ← **this keeps room for buttons**
+                    ) {
                         items(allCycles) { cycle ->
                             Row(
-                                modifier = Modifier
+                                modifier = Modifier                     // entire row loads the preset
                                     .fillMaxWidth()
                                     .clickable { onLoad(cycle) }
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = cycle.name,
+                                    text     = cycle.name,
                                     modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.bodyLarge
+                                    style    = MaterialTheme.typography.bodyLarge
                                 )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowBack,
-                                    contentDescription = "Load ${cycle.name}"
-                                )
+                                /* ——— DELETE icon ——— */
+                                IconButton(
+                                    onClick = { onRequestDelete(cycle) }
+                                    )
+                                 {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete ${cycle.name}"
+                                    )
+                                }
                             }
                             Divider()
                         }
@@ -1811,7 +1820,7 @@ fun PresetCycleListDialog(
 
                 Spacer(Modifier.height(12.dp))
 
-                // “Add New Preset” button
+                /*  “Add New” button (non‑scrolling, always visible)  */
                 OutlinedButton(
                     onClick = onCreateNew,
                     modifier = Modifier.fillMaxWidth()
@@ -1821,49 +1830,57 @@ fun PresetCycleListDialog(
                     Text("Add New Preset")
                 }
 
-                Spacer(Modifier.height(16.dp))
-
-                // “Clear preset” button (only shown if activeCycle != null)
                 if (activeCycle != null) {
+                    Spacer(Modifier.height(12.dp))
                     OutlinedButton(
-                        onClick = onClear,
+                        onClick = onUnload,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(
+                        colors   = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear preset")
+                        Icon(Icons.Default.Undo, contentDescription = "Unload preset")
                         Spacer(Modifier.width(8.dp))
-                        Text("Clear Preset")
+                        Text("Unload Preset")
                     }
                 }
             }
         },
-        /* ----------  BUTTON BAR  ---------- */
-        confirmButton = {                      // ← put the whole row here
+
+        /* ─────────────────────────  BOTTOM ROW  ───────────────────────── */
+        confirmButton = {
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = onImport,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Import") }
-
-                OutlinedButton(
-                    onClick = onExport,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Export") }
-
-                OutlinedButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f)
-                ) { Text("Cancel") }
+                SmallActionButton("Import",  onImport,  Modifier.weight(1f))
+                SmallActionButton("Export",  onExport,  Modifier.weight(1f))
+                SmallActionButton("Cancel",  onDismiss, Modifier.weight(1f))
             }
         },
-        dismissButton = {}                     // nothing here
+        dismissButton = {}   // nothing here
     )
 }
+
+/* helper that uses smaller text + slimmer padding */
+@Composable
+private fun SmallActionButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier          // ← new, default = none
+) {
+    OutlinedButton(
+        onClick        = onClick,
+        modifier       = modifier,         // use it here
+        contentPadding = PaddingValues(vertical = 6.dp, horizontal = 8.dp)
+    ) {
+        Text(label, fontSize = 14.sp, maxLines = 1)
+    }
+}
+
+
 
 
 
@@ -3375,6 +3392,7 @@ class MainActivity : ComponentActivity() {
                 var showPresetDialog           by remember { mutableStateOf(false) }
                 var showNewPresetDialog by remember { mutableStateOf(false) }
                 var showExportPicker           by remember { mutableStateOf(false) }
+                var cyclePendingDelete by remember { mutableStateOf<PresetCycle?>(null) }
 
                 // Define your capture image action.
                 val captureImage: () -> Unit = {
@@ -3389,15 +3407,17 @@ class MainActivity : ComponentActivity() {
                 val timeFormatSetting = TimeFormatSetting(useShortFormat = useShortFormat)
                 Log.d("DEBUG", "Using TimeFormatSetting: ${timeFormatSetting.useShortFormat}")
 
-
-                val allPresetCyclesFlow = readAllPresetCycles(context)
-                val allPresetCycles by allPresetCyclesFlow.collectAsState(initial = emptyList())
-
                 // Read Sheet settings and Fast Comments settings.
                 val sheetSettingsFlow = readSheetSettings(context)
                 val currentSheetSettings by sheetSettingsFlow.collectAsState(initial = SheetSettings())
                 val fastCommentsFlow = readFastCommentsSettings(context)
                 val currentFastComments by fastCommentsFlow.collectAsState(initial = FastCommentsSettings())
+
+                    LaunchedEffect(Unit) {
+                        readAllPresetCycles(context).collect { list ->
+                            allPresetCycles = list          // ← this is the mutableStateOf property
+                        }
+                    }
 
                 // Ensure CSV folder exists.
                 val csvDir = File(context.getExternalFilesDir(null), "StopwatchMetrics")
@@ -3630,27 +3650,28 @@ class MainActivity : ComponentActivity() {
 
                     if (showPresetDialog) {
                         PresetCycleListDialog(
-                            allCycles   = allPresetCycles,
-                            activeCycle = activeCycle,
-                            onDismiss   = { showPresetDialog = false },
+                            allCycles    = allPresetCycles,
+                            activeCycle  = activeCycle,
+                            onDismiss    = { showPresetDialog = false },
                             onLoad = { chosen ->
-                                activeCycle = ActiveCycle(chosen, currentIndex = 0)
-                                // prime live point if needed (same code you had)
+                                activeCycle = ActiveCycle(preset = chosen, currentIndex = 0)
+
+                                // “Prime” a live point, if one is already on the stopwatch
                                 currentActivePoint?.let { live ->
-                                    val first = activeCycle!!.preset.steps.getOrNull(0)
-                                    if (first != null) currentActivePoint = live.copy(comment = first)
+                                    // only if the stopwatch is running or paused and a live point exists
+                                    val firstStep = activeCycle!!.preset.steps.getOrNull(0)
+                                    if (firstStep != null) {
+                                        currentActivePoint = live.copy(comment = firstStep)
+                                        activeCycle!!.currentIndex = 1
+                                    }
                                 }
-                                showPresetDialog = false
-                            },
 
-                            onCreateNew = {
-                                showPresetDialog   = false
-                                showNewPresetDialog = true        // show your “create preset” dialog
+                                showPresetDialog = false         // close the list
                             },
-
-                            onClear = {
-                                activeCycle = null
-                                showPresetDialog = false
+                            onCreateNew  = { showNewPresetDialog = true; showPresetDialog = false },
+                            onUnload     = { activeCycle = null; showPresetDialog = false },   // renamed
+                            onRequestDelete = { cycle ->      // NEW
+                                cyclePendingDelete = cycle    // just open the confirm dialog
                             },
 
 
@@ -3667,6 +3688,30 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    cyclePendingDelete?.let { cycle ->
+                        AlertDialog(
+                            onDismissRequest = { cyclePendingDelete = null },
+                            title = { Text("Delete preset?") },
+                            text  = { Text("Are you sure you want to delete “${cycle.name}”?") },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        val newList = allPresetCycles - cycle        // remove from UI list
+                                        coroutineScope.launch(Dispatchers.IO) {      // persist off‑thread
+                                            saveAllPresetCycles(context, newList)
+                                        }
+                                        allPresetCycles     = newList                // update UI
+                                        cyclePendingDelete  = null                   // close dialog
+                                    }
+                                ) { Text("Delete") }
+                            },
+                            dismissButton = {
+                                OutlinedButton(
+                                    onClick = { cyclePendingDelete = null }
+                                ) { Text("Cancel") }
+                            }
+                        )
+                    }
 
                     /* showExportPicker handled exactly as in my previous snippet */
                     if (showExportPicker) {
