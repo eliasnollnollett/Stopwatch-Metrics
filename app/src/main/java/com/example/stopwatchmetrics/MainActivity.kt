@@ -68,7 +68,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -154,10 +153,14 @@ import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
 import android.app.AlertDialog
-import androidx.compose.material.icons.filled.Undo
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.*
 
 
 // --- Helper Functions & Data Classes ---
@@ -1101,6 +1104,112 @@ fun PresetExportPickerDialog(
     )
 }
 
+@Composable
+fun PresetCycleEditDialog(
+    original: PresetCycle,
+    existingNames: List<String>,
+    onConfirm: (PresetCycle) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var presetName by remember { mutableStateOf(original.name) }
+    val steps      = remember {
+        mutableStateListOf<String>().apply { addAll(original.steps) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Preset") },
+
+        text = {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 300.dp, max = 500.dp)
+            ) {
+                OutlinedTextField(
+                    value = presetName,
+                    onValueChange = { presetName = it },
+                    label = { Text("Preset Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = presetName.isBlank() ||
+                            (presetName != original.name &&
+                                    existingNames.contains(presetName)),
+                    supportingText = {
+                        when {
+                            presetName.isBlank() ->
+                                Text("Name cannot be empty", color = Color.Red)
+                            presetName != original.name &&
+                                    existingNames.contains(presetName) ->
+                                Text("A preset with that name already exists", color = Color.Red)
+                        }
+                    }
+                )
+
+                Spacer(Modifier.height(16.dp))
+                Text("Steps:", style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(8.dp))
+
+                LazyColumn {
+                    items(steps.size) { idx ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            TextField(
+                                value = steps[idx],
+                                onValueChange = { steps[idx] = it },
+                                label = { Text("Step ${idx + 1}") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = {
+                                if (steps.size > 1) steps.removeAt(idx)
+                                else steps[idx] = ""
+                            }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Remove step")
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { steps.add("") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add Step")
+                }
+            }
+        },
+
+        confirmButton = {
+            Button(
+                enabled = presetName.trim().isNotBlank() &&
+                        (presetName == original.name ||
+                                !existingNames.contains(presetName.trim())) &&
+                        steps.all { it.trim().isNotBlank() },
+                onClick = {
+                    val cleanedSteps = steps.map { it.trim() }
+                    onConfirm(
+                        PresetCycle(
+                            name  = presetName.trim(),
+                            steps = cleanedSteps
+                        )
+                    )
+                }
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+
 
 @Composable
 fun CsvTable(csvContent: String, sheetSettings: SheetSettings) {
@@ -1767,118 +1876,177 @@ fun PresetCycleListDialog(
     activeCycle : ActiveCycle?,
     onDismiss   : () -> Unit,
     onLoad      : (PresetCycle) -> Unit,
+    onEdit      : (PresetCycle) -> Unit,
+    onDelete    : (PresetCycle) -> Unit,
     onCreateNew : () -> Unit,
     onUnload    : () -> Unit,
-    onRequestDelete : (PresetCycle) -> Unit,   // ← NEW: fire *before* real delete
     onImport    : () -> Unit,
-    onExport    : () -> Unit
+    onExport    : () -> Unit,
 ) {
+    /* ── local dialog state ─────────────────────────────────────────── */
+    var expandedCycle   by remember { mutableStateOf<PresetCycle?>(null) }
+    var confirmDeleteOf by remember { mutableStateOf<PresetCycle?>(null) }
+
+    /* ── tiny helpers for the 3‑button rows ─────────────────────────── */
+    @Composable
+    fun SmallActionButton(
+        label: String,
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier
+    ) = OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(32.dp),
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+    ) { Text(label, fontSize = 12.sp) }
+
+    @Composable
+    fun BottomBtn(
+        label: String,
+        onClick: () -> Unit,
+        modifier: Modifier = Modifier
+    ) = OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text     = label,
+            style    = MaterialTheme.typography.labelSmall,   // ≈12 sp
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis                   // never wraps
+        )
+    }
+
+    /* ───────────────────────────────────────────────────────────────── */
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Choose a Preset Cycle") },
+        title = { Text("Preset Cycles") },
+
+        /* ──────────────── MAIN BODY ──────────────── */
         text = {
-            Column(
+            Box(                                            // outer frame caps size
                 Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 250.dp, max = 400.dp)   // overall height cap
+                    .widthIn(max = 420.dp)
+                    .heightIn(max = 520.dp)
             ) {
-                if (allCycles.isEmpty()) {
-                    Text("No presets saved yet.")
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)                         // ← **this keeps room for buttons**
-                    ) {
-                        items(allCycles) { cycle ->
-                            Row(
-                                modifier = Modifier                     // entire row loads the preset
-                                    .fillMaxWidth()
-                                    .clickable { onLoad(cycle) }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text     = cycle.name,
-                                    modifier = Modifier.weight(1f),
-                                    style    = MaterialTheme.typography.bodyLarge
-                                )
-                                /* ——— DELETE icon ——— */
-                                IconButton(
-                                    onClick = { onRequestDelete(cycle) }
-                                    )
-                                 {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete ${cycle.name}"
-                                    )
+                Column(                                     // inner column = list + 2 buttons
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 200.dp, max = 440.dp)
+                ) {
+
+                    /* ─── scrolling list ─── */
+                    Box(Modifier.weight(1f)) {
+                        if (allCycles.isEmpty()) {
+                            Text("No presets saved yet.")
+                        } else {
+                            LazyColumn {
+                                items(allCycles) { cycle ->
+                                    Column(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                expandedCycle =
+                                                    if (expandedCycle == cycle) null else cycle
+                                            }
+                                            .padding(vertical = 8.dp, horizontal = 4.dp)
+                                    ) {
+                                        Text(cycle.name, style = MaterialTheme.typography.bodyLarge)
+
+                                        if (expandedCycle == cycle) {
+                                            Spacer(Modifier.height(6.dp))
+                                            Row(
+                                                Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                SmallActionButton(
+                                                    "Load",
+                                                    { onLoad(cycle); onDismiss() },
+                                                    Modifier.weight(1f)
+                                                )
+                                                SmallActionButton(
+                                                    "Edit",
+                                                    { onEdit(cycle) },
+                                                    Modifier.weight(1f)
+                                                )
+                                                SmallActionButton(
+                                                    "Delete",
+                                                    { confirmDeleteOf = cycle },
+                                                    Modifier.weight(1f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Divider()
                                 }
                             }
-                            Divider()
                         }
                     }
-                }
 
-                Spacer(Modifier.height(12.dp))
+                    /* ─── always‑visible buttons under the list ─── */
 
-                /*  “Add New” button (non‑scrolling, always visible)  */
-                OutlinedButton(
-                    onClick = onCreateNew,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add new preset")
-                    Spacer(Modifier.width(8.dp))
-                    Text("Add New Preset")
-                }
-
-                if (activeCycle != null) {
                     Spacer(Modifier.height(12.dp))
+
                     OutlinedButton(
-                        onClick = onUnload,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors   = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
+                        onClick  = { onCreateNew(); onDismiss() },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Undo, contentDescription = "Unload preset")
+                        Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Unload Preset")
+                        Text("Add New Preset")
+                    }
+
+                    if (activeCycle != null) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick  = { onUnload(); onDismiss() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Unload Preset") }
                     }
                 }
             }
         },
 
-        /* ─────────────────────────  BOTTOM ROW  ───────────────────────── */
+        /* ──────────────── BOTTOM ROW ──────────────── */
         confirmButton = {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SmallActionButton("Import",  onImport,  Modifier.weight(1f))
-                SmallActionButton("Export",  onExport,  Modifier.weight(1f))
-                SmallActionButton("Cancel",  onDismiss, Modifier.weight(1f))
+                BottomBtn("Import",  onClick = onImport,  Modifier.weight(1f))
+                BottomBtn("Export",  onClick = onExport,  Modifier.weight(1f))
+                BottomBtn("Cancel",  onClick = onDismiss, Modifier.weight(1f))
             }
         },
-        dismissButton = {}   // nothing here
+        dismissButton = {}
     )
-}
 
-/* helper that uses smaller text + slimmer padding */
-@Composable
-private fun SmallActionButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier          // ← new, default = none
-) {
-    OutlinedButton(
-        onClick        = onClick,
-        modifier       = modifier,         // use it here
-        contentPadding = PaddingValues(vertical = 6.dp, horizontal = 8.dp)
-    ) {
-        Text(label, fontSize = 14.sp, maxLines = 1)
+    /* ───────── confirmation pop‑up for deletion ───────── */
+    confirmDeleteOf?.let { doomed ->
+        AlertDialog(
+            onDismissRequest = { confirmDeleteOf = null },
+            title   = { Text("Delete Preset") },
+            text    = { Text("Are you sure you want to delete \"${doomed.name}\"?") },
+            confirmButton = {
+                Button(onClick = {
+                    onDelete(doomed)
+                    confirmDeleteOf = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { confirmDeleteOf = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
+
+
+
 
 
 
@@ -1904,7 +2072,7 @@ fun NewPresetDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 300.dp, max = 500.dp)
+                    .heightIn(min = 200.dp, max = 440.dp)
             ) {
                 OutlinedTextField(
                     value = presetName,
@@ -2285,6 +2453,99 @@ fun TouchVolumeButton(
 
 
 
+@Composable
+fun PresetSummaryCard(
+    presetName   : String,
+    currentIndex : Int,
+    totalSteps   : Int,
+    nextStep     : String,
+    onNewCycle   : () -> Unit,
+    modifier     : Modifier = Modifier         //  ← NEW
+) {
+    val done     = nextStep.isBlank()
+    val progress = if (totalSteps == 0) 1f else currentIndex / totalSteps.toFloat()
+    val animProg by animateFloatAsState(progress, label = "cycle‑progress")
+
+    Card(
+        onClick = onNewCycle,
+        colors  = CardDefaults.cardColors(
+            containerColor = if (done)
+                MaterialTheme.colorScheme.onBackground
+            else
+                MaterialTheme.colorScheme.surface
+        ),
+        /* 🔸 apply the modifier that comes from the caller */
+        modifier = modifier
+            .heightIn(min = 88.dp)
+            .padding(horizontal = 8.dp)
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+
+            /* row 1 – name + x/y */
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Preset: $presetName",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (done) MaterialTheme.colorScheme.background
+                    else       MaterialTheme.colorScheme.onSurface
+                )
+                Text("$currentIndex / $totalSteps",
+                    style = MaterialTheme.typography.bodyMedium)
+            }
+
+            /* row 2 – next step */
+            Text(
+                "Next: ${if (done) "—" else nextStep}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            /* row 3 – hint */
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Press for New Cycle",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (done) MaterialTheme.colorScheme.background.copy(alpha = .70f)
+                    else       MaterialTheme.colorScheme.onSurface.copy(alpha = .70f)
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint  = LocalContentColor.current.copy(alpha = .70f)
+                )
+            }
+        }
+
+        /* ─── slim progress bar stuck to bottom ─── */
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(4.dp)                       // thickness
+                .background(
+                    if (done) MaterialTheme.colorScheme.background
+                    else       MaterialTheme.colorScheme.outline,
+                    RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
+                )
+        ) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(animProg)         // animated fraction
+                    .background(
+                        if (done) MaterialTheme.colorScheme.background
+                        else       MaterialTheme.colorScheme.primary,
+                        RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
+                    )
+            )
+        }
+    }
+}
 
 
 
@@ -2358,6 +2619,8 @@ fun MainScreen(
     allPresetCycles: List<PresetCycle>,
     onClearPreset: () -> Unit,
     onConfigurePresets: () -> Unit,
+    showPresetDialog : Boolean,
+    onShowPresetDialogChange: (Boolean) -> Unit,
 
     ) {
 
@@ -2604,23 +2867,18 @@ fun MainScreen(
                                             .padding(start = 8.dp)
                                     ) {
                                         if (activeCycle != null) {
-                                            Text(
-                                                text = "Preset: ${activeCycle.preset.name}",
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onBackground
+                                            PresetSummaryCard(
+                                                presetName   = activeCycle.preset.name,
+                                                currentIndex = activeCycle.currentIndex
+                                                    .coerceAtMost(activeCycle.preset.steps.size),
+                                                totalSteps   = activeCycle.preset.steps.size,
+                                                nextStep     = activeCycle.preset.steps
+                                                    .getOrNull(activeCycle.currentIndex) ?: "",
+                                                onNewCycle   = { activeCycle.currentIndex = 0 },
+
+                                                /* cap the width so it can’t grow indefinitely */
+                                                modifier     = Modifier.widthIn(max = 220.dp)
                                             )
-                                            Text(
-                                                text = "Next: ${activeCycle.preset.steps.getOrNull(activeCycle.currentIndex) ?: ""}",
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onBackground
-                                            )
-                                            Spacer(Modifier.height(4.dp))
-                                            OutlinedButton(
-                                                onClick = { activeCycle.currentIndex = 0 },
-                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                            ) {
-                                                Text("New Cycle", fontSize = 12.sp)
-                                            }
                                         }
                                     }
 
@@ -2642,19 +2900,7 @@ fun MainScreen(
 
                                     Spacer(modifier = Modifier.weight(1f))
 
-                                    // RIGHT: small “Configure Presets” icon button
-                                    IconButton(
-                                        onClick = onConfigurePresets,    // <- call the callback
-                                        modifier = Modifier.size(32.dp)
-                                            .size(32.dp)
-                                            .padding(end = 8.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Refresh,
-                                            contentDescription = "Configure Presets",
-                                            tint = MaterialTheme.colorScheme.onBackground
-                                        )
-                                    }
+
                                 }
 
                                 Spacer(Modifier.height(12.dp))
@@ -2694,21 +2940,18 @@ fun MainScreen(
 
                                 Spacer(Modifier.height(12.dp))
 
-                                // ── COMMENT / IMAGE TOGGLES above the point‐table ──
+                                // ── COMMENT / IMAGE / PRESET buttons ──
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
+                                    /* ----- Comment toggle ----- */
                                     IconButton(
                                         onClick = {
-                                            val newSettings = sheetSettings.copy(
-                                                showComment = !sheetSettings.showComment
-                                            )
-                                            CoroutineScope(Dispatchers.IO).launch {
-                                                saveSheetSettings(context, newSettings)
-                                            }
+                                            val new = sheetSettings.copy(showComment = !sheetSettings.showComment)
+                                            CoroutineScope(Dispatchers.IO).launch { saveSheetSettings(context, new) }
                                         },
                                         modifier = Modifier
                                             .size(40.dp)
@@ -2732,14 +2975,11 @@ fun MainScreen(
                                         )
                                     }
 
+                                    /* ----- Image toggle ----- */
                                     IconButton(
                                         onClick = {
-                                            val newSettings = sheetSettings.copy(
-                                                showImage = !sheetSettings.showImage
-                                            )
-                                            CoroutineScope(Dispatchers.IO).launch {
-                                                saveSheetSettings(context, newSettings)
-                                            }
+                                            val new = sheetSettings.copy(showImage = !sheetSettings.showImage)
+                                            CoroutineScope(Dispatchers.IO).launch { saveSheetSettings(context, new) }
                                         },
                                         modifier = Modifier
                                             .size(40.dp)
@@ -2762,7 +3002,33 @@ fun MainScreen(
                                                 MaterialTheme.colorScheme.onBackground
                                         )
                                     }
+
+                                    /* ----- Preset‑cycles button ----- */
+                                    IconButton(
+                                        onClick = { onShowPresetDialogChange(true) },
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .border(
+                                                1.dp,
+                                                if (activeCycle != null)
+                                                    MaterialTheme.colorScheme.primary        // highlight when a preset is loaded
+                                                else
+                                                    MaterialTheme.colorScheme.outline,
+                                                CircleShape
+                                            )
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = "Preset Cycles",
+                                            tint = if (activeCycle != null)
+                                                MaterialTheme.colorScheme.primary
+                                            else
+                                                MaterialTheme.colorScheme.onBackground
+                                        )
+                                    }
                                 }
+
 
                                 Spacer(Modifier.height(12.dp))
 
@@ -3393,6 +3659,7 @@ class MainActivity : ComponentActivity() {
                 var showNewPresetDialog by remember { mutableStateOf(false) }
                 var showExportPicker           by remember { mutableStateOf(false) }
                 var cyclePendingDelete by remember { mutableStateOf<PresetCycle?>(null) }
+                var editPresetTarget by remember { mutableStateOf<PresetCycle?>(null) }
 
                 // Define your capture image action.
                 val captureImage: () -> Unit = {
@@ -3413,7 +3680,7 @@ class MainActivity : ComponentActivity() {
                 val fastCommentsFlow = readFastCommentsSettings(context)
                 val currentFastComments by fastCommentsFlow.collectAsState(initial = FastCommentsSettings())
 
-                    LaunchedEffect(Unit) {
+                LaunchedEffect(Unit) {
                         readAllPresetCycles(context).collect { list ->
                             allPresetCycles = list          // ← this is the mutableStateOf property
                         }
@@ -3543,6 +3810,8 @@ class MainActivity : ComponentActivity() {
                                     activeCycle = null
                                 },
                                 onConfigurePresets = { showPresetDialog = true },
+                                showPresetDialog = showPresetDialog,
+                                onShowPresetDialogChange = { showPresetDialog = it },
                             )
                         }
                         Screen.Settings -> {
@@ -3668,10 +3937,19 @@ class MainActivity : ComponentActivity() {
 
                                 showPresetDialog = false         // close the list
                             },
+                            onEdit = { cycle ->
+                                editPresetTarget  = cycle      // open editor for this preset
+                                showPresetDialog  = false
+                            },
+
                             onCreateNew  = { showNewPresetDialog = true; showPresetDialog = false },
                             onUnload     = { activeCycle = null; showPresetDialog = false },   // renamed
-                            onRequestDelete = { cycle ->      // NEW
-                                cyclePendingDelete = cycle    // just open the confirm dialog
+                            onDelete = { cycle ->
+                                val newList = allPresetCycles - cycle
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    saveAllPresetCycles(context, newList)
+                                }
+                                allPresetCycles = newList
                             },
 
 
@@ -3710,6 +3988,24 @@ class MainActivity : ComponentActivity() {
                                     onClick = { cyclePendingDelete = null }
                                 ) { Text("Cancel") }
                             }
+                        )
+                    }
+
+                    editPresetTarget?.let { target ->
+                        PresetCycleEditDialog(
+                            original      = target,
+                            existingNames = allPresetCycles.map { it.name },
+                            onConfirm     = { updated ->
+                                // replace old entry, keep list order
+                                val newList = allPresetCycles.map { if (it.name == target.name) updated else it }
+                                // persist off the main thread
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    saveAllPresetCycles(context, newList)
+                                }
+                                allPresetCycles   = newList   // UI refresh
+                                editPresetTarget  = null      // close editor
+                            },
+                            onDismiss = { editPresetTarget = null }
                         )
                     }
 
