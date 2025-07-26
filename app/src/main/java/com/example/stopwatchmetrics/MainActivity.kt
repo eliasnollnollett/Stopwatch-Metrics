@@ -5,6 +5,7 @@ package com.example.stopwatchmetrics
 //import androidx.compose.ui.tooling.preview.Preview
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -33,6 +34,7 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -49,6 +51,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -57,6 +60,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -66,6 +70,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
@@ -84,11 +89,14 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -106,6 +114,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -118,6 +127,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -136,6 +146,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.apache.poi.ss.usermodel.ClientAnchor
 import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor
@@ -152,15 +163,6 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
-import android.app.AlertDialog
-import kotlinx.coroutines.suspendCancellableCoroutine
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material3.*
 
 
 // --- Helper Functions & Data Classes ---
@@ -1040,45 +1042,63 @@ fun PresetExportPickerDialog(
     onDismiss: () -> Unit,
     onExport: (List<PresetCycle>) -> Unit
 ) {
-    val exportAll     = remember { mutableStateOf(true) }
-    val selectedSet   = remember { mutableStateOf(all.map { it.name }.toMutableSet()) }
+    /* ---- state ---- */
+    val exportAll = remember { mutableStateOf(true) }
 
+    // a State<List<String>> that automatically re‑composes on add/remove
+    val selected = remember {
+        mutableStateListOf<String>().apply { addAll(all.map { it.name }) }
+    }
+
+    /* ---- helpers ---- */
+    fun toggleItem(name: String) {
+        if (selected.contains(name)) selected.remove(name) else selected.add(name)
+        exportAll.value = selected.size == all.size        // keep master switch in sync
+    }
+
+    /* ---- UI ---- */
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Export Presets") },
+        title = { Text("Export Presets") },
+
         text = {
             Column(Modifier.heightIn(max = 300.dp)) {
+
+                /* ── master checkbox ── */
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
                         checked = exportAll.value,
                         onCheckedChange = { checked ->
                             exportAll.value = checked
-                            if (checked) selectedSet.value = all.map { it.name }.toMutableSet()
+                            selected.apply {
+                                clear()
+                                if (checked) addAll(all.map { it.name })
+                            }
                         }
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("Export all presets")
+                    Text("Export all presets")
                 }
+
                 Spacer(Modifier.height(8.dp))
+
+                /* ── list ── */
                 LazyColumn {
                     items(all) { p ->
+                        val isChecked = selected.contains(p.name)
+
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    exportAll.value = false
-                                    if (!selectedSet.value.add(p.name))
-                                        selectedSet.value.remove(p.name)
-                                }
+                                .clickable { toggleItem(p.name) }
                                 .padding(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
-                                checked = selectedSet.value.contains(p.name),
+                                checked = isChecked,
                                 onCheckedChange = { chk ->
-                                    exportAll.value = false
-                                    if (chk) selectedSet.value.add(p.name)
-                                    else     selectedSet.value.remove(p.name)
+                                    // avoid double‑toggle when the row itself is clicked
+                                    if (chk != isChecked) toggleItem(p.name)
                                 }
                             )
                             Spacer(Modifier.width(8.dp))
@@ -1088,12 +1108,13 @@ fun PresetExportPickerDialog(
                 }
             }
         },
+
+        /* ── buttons ── */
         confirmButton = {
             Button(
-                enabled = selectedSet.value.isNotEmpty(),
+                enabled = selected.isNotEmpty(),
                 onClick = {
-                    val list = all.filter { selectedSet.value.contains(it.name) }
-                    onExport(list)
+                    onExport(all.filter { selected.contains(it.name) })
                     onDismiss()
                 }
             ) { Text("Export") }
@@ -1103,6 +1124,8 @@ fun PresetExportPickerDialog(
         }
     )
 }
+
+
 
 @Composable
 fun PresetCycleEditDialog(
@@ -1869,6 +1892,49 @@ fun CommentDialogUnified(
     )
 }
 
+@Composable
+fun PresetActionDialog(
+    cycle: PresetCycle,
+    onLoad  : () -> Unit,
+    onEdit  : () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(cycle.name) },
+        text  = { Text("What would you like to do with this preset?") },
+
+        confirmButton = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { onLoad();  onDismiss() },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Load") }
+
+                Button(
+                    onClick = { onEdit();  /* keep dialog open */ },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Edit") }
+
+                OutlinedButton(
+                    onClick  = { onDelete() },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Delete") }
+
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Cancel") }
+            }
+        },
+        dismissButton = {}     // nothing down here – everything’s in confirmButton
+    )
+}
+
 
 @Composable
 fun PresetCycleListDialog(
@@ -1884,20 +1950,11 @@ fun PresetCycleListDialog(
     onExport    : () -> Unit,
 ) {
     /* ── local dialog state ─────────────────────────────────────────── */
-    var expandedCycle   by remember { mutableStateOf<PresetCycle?>(null) }
     var confirmDeleteOf by remember { mutableStateOf<PresetCycle?>(null) }
+    var actionForCycle by remember { mutableStateOf<PresetCycle?>(null) }
 
     /* ── tiny helpers for the 3‑button rows ─────────────────────────── */
-    @Composable
-    fun SmallActionButton(
-        label: String,
-        onClick: () -> Unit,
-        modifier: Modifier = Modifier
-    ) = OutlinedButton(
-        onClick = onClick,
-        modifier = modifier.height(32.dp),
-        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-    ) { Text(label, fontSize = 12.sp) }
+
 
     @Composable
     fun BottomBtn(
@@ -1921,7 +1978,7 @@ fun PresetCycleListDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Preset Cycles") },
+        title = { Text("Preset Cycles") },
 
         /* ──────────────── MAIN BODY ──────────────── */
         text = {
@@ -1943,40 +2000,13 @@ fun PresetCycleListDialog(
                         } else {
                             LazyColumn {
                                 items(allCycles) { cycle ->
-                                    Column(
+                                    Row(
                                         Modifier
                                             .fillMaxWidth()
-                                            .clickable {
-                                                expandedCycle =
-                                                    if (expandedCycle == cycle) null else cycle
-                                            }
-                                            .padding(vertical = 8.dp, horizontal = 4.dp)
+                                            .clickable { actionForCycle = cycle }   // <── only this
+                                            .padding(vertical = 12.dp, horizontal = 8.dp)
                                     ) {
                                         Text(cycle.name, style = MaterialTheme.typography.bodyLarge)
-
-                                        if (expandedCycle == cycle) {
-                                            Spacer(Modifier.height(6.dp))
-                                            Row(
-                                                Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                SmallActionButton(
-                                                    "Load",
-                                                    { onLoad(cycle); onDismiss() },
-                                                    Modifier.weight(1f)
-                                                )
-                                                SmallActionButton(
-                                                    "Edit",
-                                                    { onEdit(cycle) },
-                                                    Modifier.weight(1f)
-                                                )
-                                                SmallActionButton(
-                                                    "Delete",
-                                                    { confirmDeleteOf = cycle },
-                                                    Modifier.weight(1f)
-                                                )
-                                            }
-                                        }
                                     }
                                     Divider()
                                 }
@@ -1994,7 +2024,7 @@ fun PresetCycleListDialog(
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Add New Preset")
+                        Text("Add New Preset")
                     }
 
                     if (activeCycle != null) {
@@ -2002,7 +2032,7 @@ fun PresetCycleListDialog(
                         OutlinedButton(
                             onClick  = { onUnload(); onDismiss() },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Unload Preset") }
+                        ) { Text("Unload Preset") }
                     }
                 }
             }
@@ -2023,6 +2053,41 @@ fun PresetCycleListDialog(
         },
         dismissButton = {}
     )
+
+    /* inside PresetCycleListDialog, *after* the AlertDialog block */
+
+    actionForCycle?.let { chosen ->
+        var confirmDelete by remember { mutableStateOf(false) }
+
+        if (confirmDelete) {
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title   = { Text("Delete Preset") },
+                text    = { Text("Are you sure you want to delete “${chosen.name}”?") },
+                confirmButton = {
+                    Button(onClick = {
+                        onDelete(chosen)
+                        confirmDelete = false
+                        actionForCycle = null          // close both dialogs
+                    }) { Text("Delete") }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { confirmDelete = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        } else {
+            PresetActionDialog(
+                cycle     = chosen,
+                onLoad    = { onLoad(chosen) },
+                onEdit    = { onEdit(chosen) },
+                onDelete  = { confirmDelete = true },
+                onDismiss = { actionForCycle = null }
+            )
+        }
+    }
+
 
     /* ───────── confirmation pop‑up for deletion ───────── */
     confirmDeleteOf?.let { doomed ->
@@ -2074,18 +2139,24 @@ fun NewPresetDialog(
                     .fillMaxWidth()
                     .heightIn(min = 200.dp, max = 440.dp)
             ) {
+                val mono = MaterialTheme.colorScheme.onBackground   // black in light‑mode, white in dark‑mode
+
                 OutlinedTextField(
-                    value = presetName,
+                    value         = presetName,
                     onValueChange = { presetName = it },
-                    label = { Text("Preset Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    isError = presetName.isBlank() || existingNames.contains(presetName),
+                    label         = { Text("Preset Name") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth(),
+
+                    /*  ►  leave this ‘false’ so the text‑field itself never turns red  */
+                    isError       = false,
+
                     supportingText = {
-                        if (presetName.isBlank()) {
-                            Text("Name cannot be empty", color = Color.Red)
-                        } else if (existingNames.contains(presetName)) {
-                            Text("A preset with that name already exists", color = Color.Red)
+                        when {
+                            presetName.isBlank() ->
+                                Text("Name cannot be empty", color = mono)
+                            existingNames.contains(presetName) ->
+                                Text("A preset with that name already exists", color = mono)
                         }
                     }
                 )
@@ -2528,8 +2599,9 @@ fun PresetSummaryCard(
                 .fillMaxWidth()
                 .height(4.dp)                       // thickness
                 .background(
-                    if (done) MaterialTheme.colorScheme.background
-                    else       MaterialTheme.colorScheme.outline,
+                    //if (done) MaterialTheme.colorScheme.background
+                    //else
+                    MaterialTheme.colorScheme.outline,
                     RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
                 )
         ) {
@@ -2538,8 +2610,9 @@ fun PresetSummaryCard(
                     .fillMaxHeight()
                     .fillMaxWidth(animProg)         // animated fraction
                     .background(
-                        if (done) MaterialTheme.colorScheme.background
-                        else       MaterialTheme.colorScheme.primary,
+                        //if (done) MaterialTheme.colorScheme.background
+                        //else
+                            MaterialTheme.colorScheme.primary,
                         RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
                     )
             )
