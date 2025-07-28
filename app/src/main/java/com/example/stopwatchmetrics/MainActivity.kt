@@ -51,7 +51,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -70,7 +69,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
@@ -89,14 +87,11 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -122,6 +117,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -1232,6 +1228,90 @@ fun PresetCycleEditDialog(
     )
 }
 
+@Composable
+fun NewCycleTile(
+    activeCycle : ActiveCycle?,                    // null  →  no preset loaded
+    onNewCycle  : () -> Unit,                      // tap action
+    modifier    : Modifier = Modifier,
+) {
+    // ── progress: 0‒1 ───────────────────────────────────────────────────────
+    val progress = if (activeCycle == null) 0f
+    else activeCycle.currentIndex.toFloat() /
+            activeCycle.preset.steps.size.coerceAtLeast(1)
+    val progressAnim by animateFloatAsState(progress, label = "cycleProgress")
+
+    // ── colours ─────────────────────────────────────────────────────────────
+    val surface      = MaterialTheme.colorScheme.surfaceVariant
+    val onSurface    = MaterialTheme.colorScheme.onSurfaceVariant
+    val containerCol = if (activeCycle?.preset?.steps?.getOrNull(activeCycle.currentIndex) == null)
+        onSurface        // swap when Next == null
+    else
+        surface
+    val contentCol   = if (containerCol == surface) onSurface else surface
+
+    // ── tile  ───────────────────────────────────────────────────────────────
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(containerCol)
+            .clickable(enabled = activeCycle != null) { onNewCycle() }
+            .padding(vertical = 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        /* ----------  TOP: “Refresh” icon with circular progress ring  ---------- */
+        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.matchParentSize()) {
+                val stroke = 5.dp.toPx()
+                drawArc(
+                    color       = contentCol.copy(alpha = .25f),
+                    startAngle  = -90f,
+                    sweepAngle  = 360f,
+                    useCenter   = false,
+                    style       = Stroke(width = stroke)
+                )
+                drawArc(
+                    color       = contentCol,
+                    startAngle  = -90f,
+                    sweepAngle  = 360f * progressAnim,
+                    useCenter   = false,
+                    style       = Stroke(width = stroke, cap = StrokeCap.Round)
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = "Preset progress",
+                tint = contentCol,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        /* ----------  MIDDLE: Preset + Next  ---------- */
+        Text(
+            text = activeCycle?.preset?.name ?: "No Preset",
+            color = contentCol,
+            style = MaterialTheme.typography.labelMedium
+        )
+        Text(
+            text = "Next: ${activeCycle?.preset
+                ?.steps
+                ?.getOrNull(activeCycle.currentIndex) ?: "—"}",
+            color = contentCol,
+            style = MaterialTheme.typography.labelSmall
+        )
+
+        Spacer(Modifier.height(4.dp))
+
+        /* ----------  BOTTOM: instruction  ---------- */
+        Text(
+            text = "Tap: New Cycle",
+            color = contentCol,
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
+}
 
 
 @Composable
@@ -2522,108 +2602,6 @@ fun TouchVolumeButton(
     }
 }
 
-
-
-@Composable
-fun PresetSummaryCard(
-    presetName   : String,
-    currentIndex : Int,
-    totalSteps   : Int,
-    nextStep     : String,
-    onNewCycle   : () -> Unit,
-    modifier     : Modifier = Modifier         //  ← NEW
-) {
-    val done     = nextStep.isBlank()
-    val progress = if (totalSteps == 0) 1f else currentIndex / totalSteps.toFloat()
-    val animProg by animateFloatAsState(progress, label = "cycle‑progress")
-
-    Card(
-        onClick = onNewCycle,
-        colors  = CardDefaults.cardColors(
-            containerColor = if (done)
-                MaterialTheme.colorScheme.onBackground
-            else
-                MaterialTheme.colorScheme.surface
-        ),
-        /* 🔸 apply the modifier that comes from the caller */
-        modifier = modifier
-            .heightIn(min = 88.dp)
-            .padding(horizontal = 8.dp)
-    ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-
-            /* row 1 – name + x/y */
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    "Preset: $presetName",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (done) MaterialTheme.colorScheme.background
-                    else       MaterialTheme.colorScheme.onSurface
-                )
-                Text("$currentIndex / $totalSteps",
-                    style = MaterialTheme.typography.bodyMedium)
-            }
-
-            /* row 2 – next step */
-            Text(
-                "Next: ${if (done) "—" else nextStep}",
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            /* row 3 – hint */
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment     = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Press for New Cycle",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (done) MaterialTheme.colorScheme.background.copy(alpha = .70f)
-                    else       MaterialTheme.colorScheme.onSurface.copy(alpha = .70f)
-                )
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint  = LocalContentColor.current.copy(alpha = .70f)
-                )
-            }
-        }
-
-        /* ─── slim progress bar stuck to bottom ─── */
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(4.dp)                       // thickness
-                .background(
-                    //if (done) MaterialTheme.colorScheme.background
-                    //else
-                    MaterialTheme.colorScheme.outline,
-                    RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
-                )
-        ) {
-            Box(
-                Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(animProg)         // animated fraction
-                    .background(
-                        //if (done) MaterialTheme.colorScheme.background
-                        //else
-                            MaterialTheme.colorScheme.primary,
-                        RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
-                    )
-            )
-        }
-    }
-}
-
-
-
-
-
 @Composable
 fun ThreePageSwipeContainer(
     modifier: Modifier = Modifier,
@@ -2687,6 +2665,7 @@ fun MainScreen(
     onToggleImageColumn: () -> Unit,
     onToggleCommentColumn: () -> Unit,
     activeCycle: ActiveCycle?,
+    onActiveCycleChange: (ActiveCycle?) -> Unit,
     onLoadCycle: (PresetCycle) -> Unit,
     onSaveAllCycles: (List<PresetCycle>) -> Unit,
     allPresetCycles: List<PresetCycle>,
@@ -2926,90 +2905,86 @@ fun MainScreen(
                             ) {
                                 Spacer(Modifier.height(16.dp))
 
-                                // ── TOP ROW: [Preset info]   [PPI @120dp]   [Configure Presets @ end] ──
+                                /* ── TOP ROW: [New‑Cycle tile]  [PPI] ───────────────────────────── */
                                 Row(
-                                    modifier          = Modifier
+                                    modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center      // ⬅️ keeps everything centred
                                 ) {
-                                    // LEFT: minimal‐size “Preset info”
-                                    Column(
-                                        modifier = Modifier
 
-                                            .padding(start = 8.dp)
-                                    ) {
-                                        if (activeCycle != null) {
-                                            PresetSummaryCard(
-                                                presetName   = activeCycle.preset.name,
-                                                currentIndex = activeCycle.currentIndex
-                                                    .coerceAtMost(activeCycle.preset.steps.size),
-                                                totalSteps   = activeCycle.preset.steps.size,
-                                                nextStep     = activeCycle.preset.steps
-                                                    .getOrNull(activeCycle.currentIndex) ?: "",
-                                                onNewCycle   = { activeCycle.currentIndex = 0 },
-
-                                                /* cap the width so it can’t grow indefinitely */
-                                                modifier     = Modifier.widthIn(max = 220.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.weight(1f))
-
-                                    // CENTER: PPI fixed at 120dp
-                                    Box(
-                                        modifier = Modifier.size(120.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        PointProgressIndicator(
-                                            elapsedTime = elapsedTime,
-                                            points = displayPoints,
-                                            centerCircleRadius = 3.dp,
-                                            pointerLengthFraction = 0.8f,
-                                            modifier = Modifier.matchParentSize()
+                                    // ── LEFT: New‑Cycle tile (only when a preset is active) ──
+                                    if (activeCycle != null) {
+                                        NewCycleTile(
+                                            activeCycle = activeCycle,
+                                            onNewCycle  = {
+                                                activeCycle?.let { onActiveCycleChange(it.copy(currentIndex = 0)) }
+                                            },
+                                            modifier = Modifier
+                                                .width(120.dp)      // same width as the PPI
+                                                .padding(end = 12.dp)
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.weight(1f))
-
-
+                                    // ── CENTRE: PPI – **no weight!** ──
+                                    Box(
+                                        modifier = Modifier.size(120.dp),           // fixed square
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        PointProgressIndicator(
+                                            elapsedTime           = elapsedTime,
+                                            points                = displayPoints,
+                                            centerCircleRadius    = 3.dp,
+                                            pointerLengthFraction = 0.8f,
+                                            modifier              = Modifier.matchParentSize()
+                                        )
+                                    }
                                 }
+
+
 
                                 Spacer(Modifier.height(12.dp))
 
                                 // ── PLAY/PAUSE  |  NEW POINT buttons under PPI ──
                                 Row(
-                                    Modifier.fillMaxWidth(),
+                                    Modifier
+                                        .fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
+                                    // ─── Play / Pause ───
                                     TouchVolumeButton(
-                                        icon = if (isRunning) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                        label = "",
-                                        tapInstruction = "Play/Pause",
+                                        icon            = if (isRunning) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                        label           = "",
+                                        tapInstruction  = "Play/Pause",
                                         holdInstruction = "Save",
-                                        onTap = onToggleStopwatch,
-                                        onLongPress = onPrepareSaveShare,
+                                        onTap           = onToggleStopwatch,
+                                        onLongPress     = onPrepareSaveShare,
                                         backgroundColor = MaterialTheme.colorScheme.surface,
-                                        iconTint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier
+                                        iconTint        = MaterialTheme.colorScheme.onBackground,
+                                        modifier        = Modifier
                                             .weight(1f)
                                             .padding(8.dp)
                                     )
+
+                                    // ─── New Point ───
                                     TouchVolumeButton(
-                                        icon = Icons.Filled.Timer,
-                                        label = "",
-                                        tapInstruction = "New Point",
+                                        icon            = Icons.Filled.Timer,
+                                        label           = "",
+                                        tapInstruction  = "New Point",
                                         holdInstruction = "Reset",
-                                        onTap = onNewPoint,
-                                        onLongPress = onResetRequest,
+                                        onTap           = onNewPoint,
+                                        onLongPress     = onResetRequest,
                                         backgroundColor = MaterialTheme.colorScheme.surface,
-                                        iconTint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier
+                                        iconTint        = MaterialTheme.colorScheme.onBackground,
+                                        modifier        = Modifier
                                             .weight(1f)
                                             .padding(8.dp)
                                     )
+
+
                                 }
+
 
                                 Spacer(Modifier.height(12.dp))
 
@@ -3857,17 +3832,20 @@ class MainActivity : ComponentActivity() {
                                 },
 
                                 activeCycle = activeCycle,
+                                onActiveCycleChange   = { activeCycle = it },
 
                                 onLoadCycle = { chosenPreset ->
+                                    // ① create a brand‑new ActiveCycle object
                                     activeCycle = ActiveCycle(preset = chosenPreset, currentIndex = 0)
 
-                // Now “prime” the live point (if one already exists):
+                                    /* ② prime the live point (if one already exists) */
                                     currentActivePoint?.let { live ->
-                                        // Only do this if the stopwatch is already running or paused and there's a live point in flight:
-                                        val firstStep = activeCycle!!.preset.steps.getOrNull(activeCycle!!.currentIndex)
+                                        val firstStep = activeCycle!!.preset.steps.getOrNull(0)
                                         if (firstStep != null) {
                                             currentActivePoint = live.copy(comment = firstStep)
-                                            activeCycle!!.currentIndex++
+
+                                            // ⟹  REPLACE the whole object (do NOT mutate its field)
+                                            activeCycle = activeCycle!!.copy(currentIndex = 1)
                                         }
                                     }
                                 },
@@ -4004,7 +3982,7 @@ class MainActivity : ComponentActivity() {
                                     val firstStep = activeCycle!!.preset.steps.getOrNull(0)
                                     if (firstStep != null) {
                                         currentActivePoint = live.copy(comment = firstStep)
-                                        activeCycle!!.currentIndex = 1
+                                        activeCycle = activeCycle!!.copy(currentIndex = 1)
                                     }
                                 }
 
@@ -4291,11 +4269,14 @@ class MainActivity : ComponentActivity() {
         )
 
         //   4) **IMMEDIATELY** assign that new live point’s comment from the next step in the cycle:
-        activeCycle?.let { active ->
-            val stepText = active.preset.steps.getOrNull(active.currentIndex)
+        activeCycle?.let { cycle ->
+            val stepText = cycle.preset.steps.getOrNull(cycle.currentIndex)
             if (stepText != null) {
+                // put the step on the brand‑new live point
                 currentActivePoint = currentActivePoint!!.copy(comment = stepText)
-                active.currentIndex++
+
+                // ⬅️ bump index immutably so Compose re‑composes
+                activeCycle = cycle.copy(currentIndex = cycle.currentIndex + 1)
             }
         }
 
