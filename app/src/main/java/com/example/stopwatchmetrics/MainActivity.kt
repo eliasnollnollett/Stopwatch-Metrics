@@ -159,6 +159,13 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.runtime.SideEffect
+
 
 
 // --- Helper Functions & Data Classes ---
@@ -1230,88 +1237,74 @@ fun PresetCycleEditDialog(
 
 @Composable
 fun NewCycleTile(
-    activeCycle : ActiveCycle?,                    // null  →  no preset loaded
-    onNewCycle  : () -> Unit,                      // tap action
+    activeCycle : ActiveCycle?,              // null → disabled
+    onNewCycle  : () -> Unit,
     modifier    : Modifier = Modifier,
+    ringSize    : Dp = 36.dp                 // ⇦ shrink / grow the circle here
 ) {
-    // ── progress: 0‒1 ───────────────────────────────────────────────────────
-    val progress = if (activeCycle == null) 0f
-    else activeCycle.currentIndex.toFloat() /
-            activeCycle.preset.steps.size.coerceAtLeast(1)
-    val progressAnim by animateFloatAsState(progress, label = "cycleProgress")
+    /* ── progress math ── */
+    val total      = activeCycle?.preset?.steps?.size ?: 0
+    val index      = activeCycle?.currentIndex ?: 0        // 0‑based
+    val progress   = if (total == 0) 0f else index / total.toFloat()
+    val animProg   by animateFloatAsState(progress, label = "cycle‑progress")
+    val done       = total > 0 && index >= total           // last cycle finished?
 
-    // ── colours ─────────────────────────────────────────────────────────────
-    val surface      = MaterialTheme.colorScheme.surfaceVariant
-    val onSurface    = MaterialTheme.colorScheme.onSurfaceVariant
-    val containerCol = if (activeCycle?.preset?.steps?.getOrNull(activeCycle.currentIndex) == null)
-        onSurface        // swap when Next == null
-    else
-        surface
-    val contentCol   = if (containerCol == surface) onSurface else surface
+    /* ── colours ── */
+    val colors     = MaterialTheme.colorScheme
+    val container  = if (done) colors.onBackground else colors.background
+    val contentCol = if (done) colors.background     else colors.onBackground
 
-    // ── tile  ───────────────────────────────────────────────────────────────
+    /* ── tile ── */
     Column(
         modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(containerCol)
+            /* ⬇️  use onBackground instead of outline */
+            .border(1.dp, MaterialTheme.colorScheme.onBackground, RoundedCornerShape(12.dp))
+            .background(container)
             .clickable(enabled = activeCycle != null) { onNewCycle() }
-            .padding(vertical = 12.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .padding(vertical = 12.dp, horizontal = 12.dp)
+            .then(modifier),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        /* ----------  TOP: “Refresh” icon with circular progress ring  ---------- */
-        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.matchParentSize()) {
-                val stroke = 5.dp.toPx()
-                drawArc(
-                    color       = contentCol.copy(alpha = .25f),
-                    startAngle  = -90f,
-                    sweepAngle  = 360f,
-                    useCenter   = false,
-                    style       = Stroke(width = stroke)
-                )
-                drawArc(
-                    color       = contentCol,
-                    startAngle  = -90f,
-                    sweepAngle  = 360f * progressAnim,
-                    useCenter   = false,
-                    style       = Stroke(width = stroke, cap = StrokeCap.Round)
-                )
-            }
-            Icon(
-                imageVector = Icons.Default.Refresh,
-                contentDescription = "Preset progress",
-                tint = contentCol,
-                modifier = Modifier.size(28.dp)
+
+        /* progress ring only (no icon) */
+        Canvas(Modifier.size(ringSize)) {
+            val stroke = 5.dp.toPx()
+
+            drawArc(                                   // background ring
+                color      = contentCol.copy(alpha = .25f),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter  = false,
+                style      = Stroke(stroke, cap = StrokeCap.Round)
+            )
+            drawArc(                                   // animated segment
+                color      = contentCol,
+                startAngle = -90f,
+                sweepAngle = 360f * animProg,
+                useCenter  = false,
+                style      = Stroke(stroke, cap = StrokeCap.Round)
             )
         }
 
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
 
-        /* ----------  MIDDLE: Preset + Next  ---------- */
-        Text(
-            text = activeCycle?.preset?.name ?: "No Preset",
+        /* text lines – normal weight */
+        Text("Tap: New Cycle",        color = contentCol, style = MaterialTheme.typography.labelSmall)
+        val presetName = activeCycle?.preset?.name ?: "—"
+        Text("Preset: $presetName",   color = contentCol, style = MaterialTheme.typography.labelSmall)
+        val nextStep   = activeCycle?.preset?.steps?.getOrNull(index) ?: "—"
+        Text("Next: $nextStep ($index/$total)",
             color = contentCol,
-            style = MaterialTheme.typography.labelMedium
-        )
-        Text(
-            text = "Next: ${activeCycle?.preset
-                ?.steps
-                ?.getOrNull(activeCycle.currentIndex) ?: "—"}",
-            color = contentCol,
-            style = MaterialTheme.typography.labelSmall
-        )
-
-        Spacer(Modifier.height(4.dp))
-
-        /* ----------  BOTTOM: instruction  ---------- */
-        Text(
-            text = "Tap: New Cycle",
-            color = contentCol,
-            style = MaterialTheme.typography.labelSmall
-        )
+            style = MaterialTheme.typography.labelSmall)
     }
 }
+
+
+
+
+
+
 
 
 @Composable
@@ -2905,42 +2898,71 @@ fun MainScreen(
                             ) {
                                 Spacer(Modifier.height(16.dp))
 
-                                /* ── TOP ROW: [New‑Cycle tile]  [PPI] ───────────────────────────── */
+                                /* ───────────── TOP ROW ───────────── */
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center      // ⬅️ keeps everything centred
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
 
-                                    // ── LEFT: New‑Cycle tile (only when a preset is active) ──
                                     if (activeCycle != null) {
-                                        NewCycleTile(
-                                            activeCycle = activeCycle,
-                                            onNewCycle  = {
-                                                activeCycle?.let { onActiveCycleChange(it.copy(currentIndex = 0)) }
-                                            },
-                                            modifier = Modifier
-                                                .width(120.dp)      // same width as the PPI
-                                                .padding(end = 12.dp)
-                                        )
-                                    }
+                                        /* ── TILE present: two equal columns ─────────── */
 
-                                    // ── CENTRE: PPI – **no weight!** ──
-                                    Box(
-                                        modifier = Modifier.size(120.dp),           // fixed square
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        PointProgressIndicator(
-                                            elapsedTime           = elapsedTime,
-                                            points                = displayPoints,
-                                            centerCircleRadius    = 3.dp,
-                                            pointerLengthFraction = 0.8f,
-                                            modifier              = Modifier.matchParentSize()
-                                        )
+                                        // ①  New‑Cycle tile
+                                        Box(Modifier.weight(1f)) {
+                                            NewCycleTile(
+                                                activeCycle = activeCycle,
+                                                onNewCycle  = {
+                                                    onActiveCycleChange(activeCycle.copy(currentIndex = 0))
+                                                },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(end = 8.dp)
+                                            )
+                                        }
+
+                                        // ②  Dial gets the other half
+                                        Box(
+                                            modifier = Modifier.weight(1f),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Box(Modifier.size(120.dp)) {
+                                                PointProgressIndicator(
+                                                    elapsedTime           = elapsedTime,
+                                                    points                = displayPoints,
+                                                    centerCircleRadius    = 3.dp,
+                                                    pointerLengthFraction = 0.8f,
+                                                    modifier              = Modifier.matchParentSize()
+                                                )
+                                            }
+                                        }
+
+                                    } else {
+                                        /* ── NO tile: keep dial centred with two spacers ───────── */
+
+                                        Spacer(Modifier.weight(1f))          // balance left
+                                        Box(
+                                            modifier = Modifier.weight(1f),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Box(Modifier.size(120.dp)) {
+                                                PointProgressIndicator(
+                                                    elapsedTime           = elapsedTime,
+                                                    points                = displayPoints,
+                                                    centerCircleRadius    = 3.dp,
+                                                    pointerLengthFraction = 0.8f,
+                                                    modifier              = Modifier.matchParentSize()
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.weight(1f))          // balance right
                                     }
                                 }
+
+
+
+
 
 
 
@@ -3689,7 +3711,21 @@ class MainActivity : ComponentActivity() {
                 val useDarkMode by readDarkModeSetting(context)
                     .collectAsState(initial = true)
 
-                MyApplicationTheme(useDarkTheme = useDarkMode) {
+
+            MyApplicationTheme(useDarkTheme = useDarkMode) {
+
+                // ── 1) read the colour INSIDE a composable  ─────────────────────────
+                val surfaceColor = MaterialTheme.colorScheme.onSurface          // ✅ composable read
+
+                // ── 2) apply it to the system bar in a side‑effect  ────────────────
+                val view = LocalView.current
+                SideEffect {
+                    WindowCompat.getInsetsController(window, view)
+                        ?.isAppearanceLightStatusBars = !useDarkMode          // light‑/dark icons
+
+                    window.statusBarColor = surfaceColor.toArgb()             // ← use captured colour
+                }
+
                 // Reference to the current Activity instance.
                 val activityInstance = this
 
@@ -3834,20 +3870,9 @@ class MainActivity : ComponentActivity() {
                                 activeCycle = activeCycle,
                                 onActiveCycleChange   = { activeCycle = it },
 
-                                onLoadCycle = { chosenPreset ->
-                                    // ① create a brand‑new ActiveCycle object
-                                    activeCycle = ActiveCycle(preset = chosenPreset, currentIndex = 0)
-
-                                    /* ② prime the live point (if one already exists) */
-                                    currentActivePoint?.let { live ->
-                                        val firstStep = activeCycle!!.preset.steps.getOrNull(0)
-                                        if (firstStep != null) {
-                                            currentActivePoint = live.copy(comment = firstStep)
-
-                                            // ⟹  REPLACE the whole object (do NOT mutate its field)
-                                            activeCycle = activeCycle!!.copy(currentIndex = 1)
-                                        }
-                                    }
+                                onLoadCycle = { chosen ->
+                                    activeCycle = ActiveCycle(chosen, 0)   // index starts at 0
+                                    // no changes to currentActivePoint here
                                 },
                                 onSaveAllCycles = { updatedList ->
                                     // Write back the updated list of presets
@@ -3975,16 +4000,6 @@ class MainActivity : ComponentActivity() {
                             onDismiss    = { showPresetDialog = false },
                             onLoad = { chosen ->
                                 activeCycle = ActiveCycle(preset = chosen, currentIndex = 0)
-
-                                // “Prime” a live point, if one is already on the stopwatch
-                                currentActivePoint?.let { live ->
-                                    // only if the stopwatch is running or paused and a live point exists
-                                    val firstStep = activeCycle!!.preset.steps.getOrNull(0)
-                                    if (firstStep != null) {
-                                        currentActivePoint = live.copy(comment = firstStep)
-                                        activeCycle = activeCycle!!.copy(currentIndex = 1)
-                                    }
-                                }
 
                                 showPresetDialog = false         // close the list
                             },
@@ -4132,7 +4147,15 @@ class MainActivity : ComponentActivity() {
         }
 
 
+
+
     }
+
+
+
+
+
+
 
     fun deleteAllFiles() {
         // Delete files in the StopwatchMetrics folder (CSV and JPEG files)
@@ -4235,57 +4258,53 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun newPoint() {
-        // If no time has elapsed yet, treat this as “just start the stop watch without recording a zero‐point.”
-        if (_elapsedTime.value == 0L) {
-            if (!_isRunning.value) {
-                toggleStopwatch()
-            }
-            // If a preset cycle is already loaded, we should immediately assign its first step
-            activeCycle?.let { active ->
-                val firstStep = active.preset.steps.getOrNull(active.currentIndex)
-                if (firstStep != null) {
-                    // The currentActivePoint should already exist (because toggleStopwatch() created it).
-                    // So we copy its comment = firstStep, then bump to next index.
-                    currentActivePoint = currentActivePoint?.copy(comment = firstStep)
-                    active.currentIndex++
-                }
-            }
-            return
+
+        /* ── 1  ensure the stopwatch is running (your current logic already does this) ── */
+        if (!_isRunning.value) toggleStopwatch()          // harmless if it’s already running
+
+        /* ── 2  if there is no live point yet, create one right now ── */
+        if (currentActivePoint == null) {
+            currentPointStartTime = System.currentTimeMillis()
+            currentActivePoint = PointData(
+                elapsedTime      = 0L,
+                pointStartTime   = currentPointStartTime
+            )
         }
 
-        // ── Otherwise, there *is* some elapsed time on the existing live point:
-        //   1) “Commit” the old live point into history:
+        /* ── 3  the very first point (elapsed == 0) gets the first preset step ── */
+        if (_elapsedTime.value == 0L) {                   // i.e. we just started
+            activeCycle?.let { cycle ->
+                val step = cycle.preset.steps.getOrNull(cycle.currentIndex)
+                if (step != null) {
+                    currentActivePoint = currentActivePoint!!.copy(comment = step)
+                    activeCycle = cycle.copy(currentIndex = cycle.currentIndex + 1)
+                }
+            }
+            return                                         // nothing else to commit yet
+        }
+
+        /* ── 4  everything below is unchanged “normal” next‑point logic ────────── */
+
+        // commit the previous live point
         currentActivePoint?.let { _points.add(it) }
 
-        //   2) Reset timing so we start a brand‐new live point:
-        startTime = System.currentTimeMillis()
-        accumulatedTime = 0L
-        _elapsedTime.value = 0L
+        // start a fresh live point
+        startTime         = System.currentTimeMillis()
+        accumulatedTime   = 0L
+        _elapsedTime.value= 0L
+        currentActivePoint= PointData(0L, startTime)
 
-        //   3) Create the brand‐new live point with zero elapsed time:
-        currentActivePoint = PointData(
-            elapsedTime = 0L,
-            pointStartTime = startTime
-        )
-
-        //   4) **IMMEDIATELY** assign that new live point’s comment from the next step in the cycle:
+        // stamp the next preset step, if any
         activeCycle?.let { cycle ->
-            val stepText = cycle.preset.steps.getOrNull(cycle.currentIndex)
-            if (stepText != null) {
-                // put the step on the brand‑new live point
-                currentActivePoint = currentActivePoint!!.copy(comment = stepText)
-
-                // ⬅️ bump index immutably so Compose re‑composes
+            val step = cycle.preset.steps.getOrNull(cycle.currentIndex)
+            if (step != null) {
+                currentActivePoint = currentActivePoint!!.copy(comment = step)
                 activeCycle = cycle.copy(currentIndex = cycle.currentIndex + 1)
             }
         }
-
-        //   5) If the stopwatch was paused (because maybe you tapped “Pause” right before),
-        //      start it again so the timer keeps going:
-        if (!_isRunning.value) {
-            toggleStopwatch()
-        }
     }
+
+
 
 
     private fun resetStopwatch() {
