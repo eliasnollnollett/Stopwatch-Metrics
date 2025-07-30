@@ -102,6 +102,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -119,9 +120,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -133,6 +136,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import coil.compose.rememberAsyncImagePainter
 import com.example.stopwatchmetrics.ui.theme.MyApplicationTheme
@@ -159,13 +163,6 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.runtime.SideEffect
-
 
 
 // --- Helper Functions & Data Classes ---
@@ -206,7 +203,8 @@ data class PointData(
     var elapsedTime: Long,
     val pointStartTime: Long,
     var comment: String = "",
-    var imagePath: String? = null
+    var imagePath: String? = null,
+    val cycleNumber   : Int = 1
 )
 
 
@@ -214,45 +212,54 @@ fun generateCSV(
     points: List<PointData>,
     settings: SheetSettings,
     timeFormatSetting: TimeFormatSetting
-
 ): String {
-    val allHeaders = listOf("Point", "Time", "TMU", "Start Time", "Comment", "Image")
+
+    /* ── 1 . add the header ────────────────────────────────────────── */
+    val allHeaders = listOf(
+        "Point", "Time", "TMU", "Start Time", "Comment", "Image", "Cycle"
+    )
+
+    /* ── 2 . respect the toggle in Settings ────────────────────────── */
     val enabledHeaders = allHeaders.filter { header ->
         when (header) {
-            "Point" -> settings.showPoint
-            "Time" -> settings.showTime
-            "TMU" -> settings.showTMU
-            "Start Time" -> settings.showStartTime
-            "Comment" -> settings.showComment
-            "Image" -> settings.showImage
-            else -> true
+            "Point"       -> settings.showPoint
+            "Time"        -> settings.showTime
+            "TMU"         -> settings.showTMU
+            "Start Time"  -> settings.showStartTime
+            "Comment"     -> settings.showComment
+            "Image"       -> settings.showImage
+            "Cycle"       -> settings.showCycle        // ← NEW
+            else          -> true
         }
     }
     val headerLine = enabledHeaders.joinToString(",")
 
-    // For debugging – log the time format setting:
-    Log.d("DEBUG", "generateCSV: useShortFormat = ${timeFormatSetting.useShortFormat}")
-
+    /* ── 3 . build each row ────────────────────────────────────────── */
     val rows = points.mapIndexed { index, point ->
         val formattedTime = formatTime(point.elapsedTime, timeFormatSetting)
-        if (index == 0) {
-            Log.d("DEBUG", "Point #1 formatted time: $formattedTime")
-        }
+
         val allCells = listOf(
-            "#${index + 1}",
-            formattedTime,
-            "${(point.elapsedTime / 36).toInt()}",
-            formatPointInTime(point.pointStartTime),
-            point.comment,
-            point.imagePath ?: ""
+            "#${index + 1}",                       // Point
+            formattedTime,                         // Time
+            "${(point.elapsedTime / 36).toInt()}", // TMU
+            formatPointInTime(point.pointStartTime), // Start Time
+            point.comment,                         // Comment
+            point.imagePath ?: "",                 // Image
+            "${point.cycleNumber}"                 // Cycle  ← NEW
         )
-        val enabledCells = allHeaders.mapIndexedNotNull { i, header ->
-            if (enabledHeaders.contains(header)) allCells[i] else null
-        }
-        enabledCells.joinToString(",")
+
+        /* keep only the enabled columns */
+        allHeaders.mapIndexedNotNull { i, header ->
+            if (header in enabledHeaders) allCells[i] else null
+        }.joinToString(",")
     }
-    return "$headerLine\n${rows.joinToString("\n")}"
+
+    return buildString {
+        appendLine(headerLine)
+        append(rows.joinToString("\n"))
+    }
 }
+
 
 
 fun isImageReferencedByOtherCsvFiles(
@@ -421,6 +428,7 @@ fun exportExcelFile(
     if (settings.showStartTime) headerRow.createCell(colIndex++).setCellValue("Start Time")
     if (settings.showComment) headerRow.createCell(colIndex++).setCellValue("Comment")
     if (settings.showImage) headerRow.createCell(colIndex++).setCellValue("Image")
+    if (settings.showCycle) headerRow.createCell(colIndex++).setCellValue("Cycle")
 
     // Create the drawing patriarch to hold images.
     val drawing = sheet.createDrawingPatriarch()
@@ -507,6 +515,9 @@ fun exportExcelFile(
                 row.createCell(currentCol).setCellValue("")
             }
             currentCol++
+        }
+        if (settings.showCycle) {
+            row.createCell(currentCol++).setCellValue(point.cycleNumber.toDouble())
         }
     }
 
@@ -827,12 +838,14 @@ fun PointTable(
     currentActivePoint: PointData?,
     timeFormatSetting: TimeFormatSetting,
     sheetSettings: SheetSettings,
+    hasPresetLoaded     : Boolean,            // NEW (true ↔ activeCycle!=null)
     onCommentClick: (PointData) -> Unit,
     onImageClick: (PointData) -> Unit,
     onAddCommentForLive: () -> Unit,
     onCaptureImageForLive: () -> Unit
 ) {
     // decide if we actually show those columns
+    val showCycleColumn  = sheetSettings.showCycle && hasPresetLoaded
     val showCommentColumn = sheetSettings.showComment
     val showImageColumn   = sheetSettings.showImage
 
@@ -851,6 +864,8 @@ fun PointTable(
             if (sheetSettings.showStartTime) Text("Start Time", Modifier.weight(1f), textAlign = TextAlign.Center)
             if (showCommentColumn)           Text("Comment",    Modifier.weight(1f), textAlign = TextAlign.Center)
             if (showImageColumn)             Text("Image",      Modifier.weight(1f), textAlign = TextAlign.Center)
+            if (showCycleColumn)             Text("Cycle",    Modifier.weight(1f), textAlign = TextAlign.Center)
+
         }
 
         // ─── data rows ───
@@ -930,6 +945,14 @@ fun PointTable(
                                 Text("—", textAlign = TextAlign.Center)
                             }
                         }
+                    }
+                    /* ─────  NEW:  Cycle  ───── */
+                    if (showCycleColumn) {
+                        Text(
+                            text     = "${point.cycleNumber}",
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
@@ -1323,13 +1346,14 @@ fun CsvTable(csvContent: String, sheetSettings: SheetSettings) {
     // Determine enabled indices based on the full header.
     val enabledIndices = headerCells.mapIndexedNotNull { index, column ->
         when (column) {
-            "Point" -> if (sheetSettings.showPoint) index else null
-            "Time" -> if (sheetSettings.showTime) index else null
-            "TMU" -> if (sheetSettings.showTMU) index else null
-            "Start Time" -> if (sheetSettings.showStartTime) index else null
-            "Comment" -> if (sheetSettings.showComment) index else null
-            "Image" -> if (sheetSettings.showImage) index else null
-            else -> index
+            "Point"       -> if (sheetSettings.showPoint)       index else null
+            "Time"        -> if (sheetSettings.showTime)        index else null
+            "TMU"         -> if (sheetSettings.showTMU)         index else null
+            "Start Time"  -> if (sheetSettings.showStartTime)   index else null
+            "Comment"     -> if (sheetSettings.showComment)     index else null
+            "Image"       -> if (sheetSettings.showImage)       index else null
+            "Cycle"       -> if (sheetSettings.showCycle)       index else null   // ← add this
+            else          -> index        // keep any unknown column
         }
     }
 
@@ -1523,6 +1547,15 @@ fun SettingsScreen(
                 label = "Show Image",
                 checked = sheetSettings.showImage,
                 onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showImage = it)) }
+            )
+            SettingsRow(
+                label = "Show Cycle if preset is loaded",
+                checked = sheetSettings.showCycle,
+                onCheckedChange = { checked ->
+                    val new = sheetSettings.copy(showCycle = checked)
+                    onSheetSettingsChange(new)
+                    CoroutineScope(Dispatchers.IO).launch { saveSheetSettings(context, new) }
+                }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -2307,7 +2340,6 @@ fun NewPresetDialog(
 }
 
 
-
 // Dialog to prompt for file renaming.
 @Composable
 fun RenameFileDialog(
@@ -2667,12 +2699,15 @@ fun MainScreen(
     showPresetDialog : Boolean,
     onShowPresetDialogChange: (Boolean) -> Unit,
 
+
+    onCycleIncrement: () -> Unit,
+
     ) {
 
     val context = LocalContext.current
 
-    var showPresetListDialog by remember { mutableStateOf(false) }
-    var showNewPresetDialog by remember { mutableStateOf(false) }
+   var showPresetListDialog by remember { mutableStateOf(false) }
+   var showNewPresetDialog by remember { mutableStateOf(false) }
 
     // 1) read the preference – initial = null means “nothing loaded yet”
     val showTipsPref: Boolean? by readShowTips(context)
@@ -2915,6 +2950,7 @@ fun MainScreen(
                                                 activeCycle = activeCycle,
                                                 onNewCycle  = {
                                                     onActiveCycleChange(activeCycle.copy(currentIndex = 0))
+                                                    onCycleIncrement()               // <── bump counter in Activity
                                                 },
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -3108,10 +3144,11 @@ fun MainScreen(
                                     currentActivePoint = currentActivePoint,
                                     timeFormatSetting = timeFormatSetting,
                                     sheetSettings = sheetSettings,
+                                    hasPresetLoaded      = activeCycle != null,
                                     onCommentClick = { selectedPointForComment = it },
                                     onImageClick = { onImageClick(it) },
                                     onAddCommentForLive = onAddComment,
-                                    onCaptureImageForLive = onCaptureImage
+                                    onCaptureImageForLive = onCaptureImage,
                                 )
                             }
                         }
@@ -3163,10 +3200,12 @@ fun MainScreen(
                                 currentActivePoint    = currentActivePoint,
                                 timeFormatSetting     = timeFormatSetting,
                                 sheetSettings         = sheetSettings,
+                                hasPresetLoaded      = activeCycle != null,
                                 onCommentClick        = { selectedPointForComment = it },
                                 onImageClick          = { onImageClick(it) },
                                 onAddCommentForLive   = onAddComment,
                                 onCaptureImageForLive = onCaptureImage,
+
                             )
                         }
                     }
@@ -3302,6 +3341,8 @@ class MainActivity : ComponentActivity() {
         )
     )
     private var activeCycle      by mutableStateOf<ActiveCycle?>(null)
+    private var currentCycleNumber by mutableStateOf(1)
+
 
     private fun defaultCycles(): List<PresetCycle> {
         return listOf(
@@ -3310,6 +3351,7 @@ class MainActivity : ComponentActivity() {
             // …add any other built‐in presets you’d like…
         )
     }
+
 
     private var isDirty by mutableStateOf(false)
 
@@ -3614,9 +3656,6 @@ class MainActivity : ComponentActivity() {
                     allPresetCycles = savedList
                 }
             }
-
-
-
         }
 
         clearOldExportsCache()
@@ -3888,6 +3927,11 @@ class MainActivity : ComponentActivity() {
                                 onConfigurePresets = { showPresetDialog = true },
                                 showPresetDialog = showPresetDialog,
                                 onShowPresetDialogChange = { showPresetDialog = it },
+
+
+                                onCycleIncrement         = { currentCycleNumber++ }
+
+
                             )
                         }
                         Screen.Settings -> {
@@ -4105,9 +4149,6 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-
-
-
                     if (showFastCommentsEditDialog) {
                         FastCommentsEditDialog(
                             initialFastComments = currentFastComments,
@@ -4145,17 +4186,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-
-
-
-
     }
-
-
-
-
-
-
 
     fun deleteAllFiles() {
         // Delete files in the StopwatchMetrics folder (CSV and JPEG files)
@@ -4247,7 +4278,12 @@ class MainActivity : ComponentActivity() {
             _isRunning.value = true
             if (accumulatedTime == 0L) {
                 currentPointStartTime = System.currentTimeMillis()
-                currentActivePoint = PointData(elapsedTime = 0L, pointStartTime = currentPointStartTime)
+                currentActivePoint = PointData(
+                    elapsedTime    = 0L,
+                    pointStartTime = currentPointStartTime,
+                    cycleNumber    = currentCycleNumber
+                )
+
             }
             startTime = System.currentTimeMillis()
             updateElapsedTime()
@@ -4267,7 +4303,8 @@ class MainActivity : ComponentActivity() {
             currentPointStartTime = System.currentTimeMillis()
             currentActivePoint = PointData(
                 elapsedTime      = 0L,
-                pointStartTime   = currentPointStartTime
+                pointStartTime   = currentPointStartTime,
+                cycleNumber     = currentCycleNumber
             )
         }
 
@@ -4292,7 +4329,11 @@ class MainActivity : ComponentActivity() {
         startTime         = System.currentTimeMillis()
         accumulatedTime   = 0L
         _elapsedTime.value= 0L
-        currentActivePoint= PointData(0L, startTime)
+        currentActivePoint = PointData(
+            elapsedTime    = 0L,
+            pointStartTime = startTime,
+            cycleNumber    = currentCycleNumber
+        )
 
         // stamp the next preset step, if any
         activeCycle?.let { cycle ->
@@ -4303,9 +4344,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-
-
 
     private fun resetStopwatch() {
         _isRunning.value = false

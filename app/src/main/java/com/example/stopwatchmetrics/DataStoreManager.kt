@@ -27,6 +27,8 @@ val Context.dataStore by preferencesDataStore(name = "settings")
 // ───────────────────────────────
 val TIME_FORMAT_KEY = booleanPreferencesKey("time_format_setting")
 
+
+
 data class TimeFormatSetting(
     val useShortFormat: Boolean = false
 )
@@ -69,6 +71,7 @@ private val SHOW_TMU_KEY        = booleanPreferencesKey("show_tmu")
 private val SHOW_START_TIME_KEY = booleanPreferencesKey("show_start_time")
 private val SHOW_COMMENT_KEY    = booleanPreferencesKey("show_comment")
 private val SHOW_IMAGE_KEY      = booleanPreferencesKey("show_image")
+private val KEY_SHOW_CYCLE = booleanPreferencesKey("show_cycle")
 
 data class SheetSettings(
     val showPoint: Boolean = true,
@@ -76,8 +79,10 @@ data class SheetSettings(
     val showTMU: Boolean = false,
     val showStartTime: Boolean = true,
     val showComment: Boolean = true,
-    val showImage: Boolean = true
+    val showImage: Boolean = true,
+    val showCycle     : Boolean = true
 )
+
 
 suspend fun saveSheetSettings(context: Context, sheetSettings: SheetSettings) {
     context.dataStore.edit { prefs ->
@@ -87,6 +92,7 @@ suspend fun saveSheetSettings(context: Context, sheetSettings: SheetSettings) {
         prefs[SHOW_START_TIME_KEY]  = sheetSettings.showStartTime
         prefs[SHOW_COMMENT_KEY]     = sheetSettings.showComment
         prefs[SHOW_IMAGE_KEY]       = sheetSettings.showImage
+        prefs[KEY_SHOW_CYCLE] = sheetSettings.showCycle
     }
 }
 
@@ -98,7 +104,8 @@ fun readSheetSettings(context: Context): Flow<SheetSettings> =
             showTMU       = prefs[SHOW_TMU_KEY]         ?: false,
             showStartTime = prefs[SHOW_START_TIME_KEY]  ?: true,
             showComment   = prefs[SHOW_COMMENT_KEY]     ?: true,
-            showImage     = prefs[SHOW_IMAGE_KEY]       ?: true
+            showImage     = prefs[SHOW_IMAGE_KEY]       ?: true,
+            showCycle     = prefs[KEY_SHOW_CYCLE]       ?: true,
         )
     }
 
