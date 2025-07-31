@@ -216,7 +216,13 @@ fun generateCSV(
 
     /* ── 1 . add the header ────────────────────────────────────────── */
     val allHeaders = listOf(
-        "Point", "Time", "TMU", "Start Time", "Comment", "Image", "Cycle"
+        "Point",
+        "Time",
+        "TMU",
+        "Start Time",
+        "Comment",
+        "Image",
+        "Cycle"
     )
 
     /* ── 2 . respect the toggle in Settings ────────────────────────── */
@@ -239,13 +245,14 @@ fun generateCSV(
         val formattedTime = formatTime(point.elapsedTime, timeFormatSetting)
 
         val allCells = listOf(
+
             "#${index + 1}",                       // Point
             formattedTime,                         // Time
             "${(point.elapsedTime / 36).toInt()}", // TMU
             formatPointInTime(point.pointStartTime), // Start Time
             point.comment,                         // Comment
             point.imagePath ?: "",                 // Image
-            "${point.cycleNumber}"                 // Cycle  ← NEW
+            "${point.cycleNumber}",                 // NEW  (index 0 == “Cycle”)
         )
 
         /* keep only the enabled columns */
@@ -422,6 +429,7 @@ fun exportExcelFile(
 
     // Create header row.
     val headerRow = sheet.createRow(0)
+
     if (settings.showPoint) headerRow.createCell(colIndex++).setCellValue("Point")
     if (settings.showTime) headerRow.createCell(colIndex++).setCellValue("Time")
     if (settings.showTMU) headerRow.createCell(colIndex++).setCellValue("TMU")
@@ -429,6 +437,7 @@ fun exportExcelFile(
     if (settings.showComment) headerRow.createCell(colIndex++).setCellValue("Comment")
     if (settings.showImage) headerRow.createCell(colIndex++).setCellValue("Image")
     if (settings.showCycle) headerRow.createCell(colIndex++).setCellValue("Cycle")
+
 
     // Create the drawing patriarch to hold images.
     val drawing = sheet.createDrawingPatriarch()
