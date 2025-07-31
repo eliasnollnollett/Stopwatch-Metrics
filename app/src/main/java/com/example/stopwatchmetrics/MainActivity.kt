@@ -3,6 +3,7 @@
 package com.example.stopwatchmetrics
 
 //import androidx.compose.ui.tooling.preview.Preview
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
@@ -62,6 +63,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -124,7 +126,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -160,6 +166,7 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import androidx.camera.core.Preview as CameraXPreview
@@ -841,133 +848,169 @@ fun ImageCaptureDialog(
     )
 }
 
+@OptIn(ExperimentalTextApi::class)
 @Composable
 fun PointTable(
     points: List<PointData>,
     currentActivePoint: PointData?,
     timeFormatSetting: TimeFormatSetting,
     sheetSettings: SheetSettings,
-    hasPresetLoaded     : Boolean,            // NEW (true ↔ activeCycle!=null)
+    hasPresetLoaded: Boolean,
     onCommentClick: (PointData) -> Unit,
     onImageClick: (PointData) -> Unit,
     onAddCommentForLive: () -> Unit,
     onCaptureImageForLive: () -> Unit
 ) {
-    // decide if we actually show those columns
-    val showCycleColumn  = sheetSettings.showCycle && hasPresetLoaded
-    val showCommentColumn = sheetSettings.showComment
-    val showImageColumn   = sheetSettings.showImage
+    /* ───── decide visible columns ───── */
+    val columns = buildList {
+        if (sheetSettings.showPoint   ) add("Point")
+        if (sheetSettings.showTime    ) add("Time")
+        if (sheetSettings.showTMU     ) add("TMU")
+        if (sheetSettings.showStartTime) add("Start Time")
+        if (sheetSettings.showComment ) add("Comment")
+        if (sheetSettings.showImage   ) add("Image")
+        if (sheetSettings.showCycle && hasPresetLoaded) add("Cycle")
+    }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // ─── header row ───
+    val density      = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+
+    /* ───── PASS ① : measure natural width of every column (header + data) ───── */
+    val naturalPx: List<Int> = remember(
+        points,                // already there
+        sheetSettings,         // already there
+        hasPresetLoaded        //  ← NEW
+    ) {
+        val px = IntArray(columns.size) { 0 }
+
+        fun update(colIdx: Int, text: String) {
+            if (px[colIdx] >= 600) return
+            val w = textMeasurer
+                .measure(AnnotatedString(text))
+                .size.width
+            px[colIdx] = max(px[colIdx], w)
+        }
+
+        // headers
+        columns.forEachIndexed { i, h -> update(i, h) }
+
+        // rows
+        points.forEachIndexed { rowIdx, point ->
+            var col = 0
+            if (sheetSettings.showPoint   ) update(col++, "#${rowIdx + 1}")
+            if (sheetSettings.showTime    ) update(col++, formatTime(point.elapsedTime, timeFormatSetting))
+            if (sheetSettings.showTMU     ) update(col++, "${(point.elapsedTime / 36).toInt()}")
+            if (sheetSettings.showStartTime) update(col++, formatPointInTime(point.pointStartTime))
+            if (sheetSettings.showComment ) update(col++, point.comment.ifBlank { "—" })
+            if (sheetSettings.showImage   ) update(col++, if (point.imagePath.isNullOrBlank()) "—" else "img")
+            if (sheetSettings.showCycle && hasPresetLoaded) update(col++, "${point.cycleNumber}")
+        }
+
+        px.toList()
+    }
+
+    /* convert to dp once */
+    val naturalDp = remember(naturalPx) {
+        naturalPx.map { with(density) { it.toDp() } }
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+
+        /* ───── header row ───── */
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment     = Alignment.CenterVertically
+                .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.Start      // ← leave space distribution to weights
         ) {
-            if (sheetSettings.showPoint)     Text("Point",      Modifier.weight(1f), textAlign = TextAlign.Center)
-            if (sheetSettings.showTime)      Text("Time",       Modifier.weight(1f), textAlign = TextAlign.Center)
-            if (sheetSettings.showTMU)       Text("TMU",        Modifier.weight(1f), textAlign = TextAlign.Center)
-            if (sheetSettings.showStartTime) Text("Start Time", Modifier.weight(1f), textAlign = TextAlign.Center)
-            if (showCommentColumn)           Text("Comment",    Modifier.weight(1f), textAlign = TextAlign.Center)
-            if (showImageColumn)             Text("Image",      Modifier.weight(1f), textAlign = TextAlign.Center)
-            if (showCycleColumn)             Text("Cycle",    Modifier.weight(1f), textAlign = TextAlign.Center)
-
+            columns.forEachIndexed { i, title ->
+                Text(
+                    text = title,
+                    modifier = Modifier
+                        .widthIn(min = naturalDp[i])        // never shrink below natural width
+                        .weight(naturalDp[i].value, fill = true),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
         }
 
-        // ─── data rows ───
+
+        Divider()
+
+        /* ───── data rows ───── */
         LazyColumn {
-            items(points.reversed()) { point ->
+            itemsIndexed(points.reversed()) { realIdx, point ->
+
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    horizontalArrangement = Arrangement.Start,
                     verticalAlignment     = Alignment.CenterVertically
                 ) {
-                    if (sheetSettings.showPoint) {
-                        val idx = points.size - points.reversed().indexOf(point)
-                        Text("#$idx", Modifier.weight(1f), textAlign = TextAlign.Center)
-                    }
-                    if (sheetSettings.showTime) {
-                        Text(
-                            formatTime(point.elapsedTime, timeFormatSetting),
-                            Modifier.weight(1f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    if (sheetSettings.showTMU) {
-                        Text(
-                            "${(point.elapsedTime / 36).toInt()}",
-                            Modifier.weight(1f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    if (sheetSettings.showStartTime) {
-                        Text(
-                            formatPointInTime(point.pointStartTime),
-                            Modifier.weight(1f),
-                            textAlign = TextAlign.Center
-                        )
+                    var col = 0     // tracks visible-column index
+
+                    @Composable
+                    fun cell(text: String, onClick: (() -> Unit)? = null) {
+                        val base = Modifier
+                            .widthIn(min = naturalDp[col])              // never shrink below natural size
+                            .weight(naturalDp[col].value, fill = true)  // but share the surplus space
+
+                        val mod  = onClick?.let { base.clickable(onClick = it) } ?: base
+
+                        Text(text, modifier = mod, textAlign = TextAlign.Center)
+                        col++
                     }
 
-                    // ── COMMENT cell ──
-                    if (showCommentColumn) {
-                        Text(
-                            text = if (point.comment.isNotBlank()) point.comment else "—",
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    if (point.pointStartTime == currentActivePoint?.pointStartTime) {
-                                        onAddCommentForLive()
-                                    } else {
-                                        onCommentClick(point)
-                                    }
-                                },
-                            textAlign = TextAlign.Center
+                    if (sheetSettings.showPoint)
+                        cell("#${points.size - realIdx}")
+                    if (sheetSettings.showTime)
+                        cell(formatTime(point.elapsedTime, timeFormatSetting))
+                    if (sheetSettings.showTMU)
+                        cell("${(point.elapsedTime / 36).toInt()}")
+                    if (sheetSettings.showStartTime)
+                        cell(formatPointInTime(point.pointStartTime))
+                    if (sheetSettings.showComment)
+                        cell(
+                            if (point.comment.isNotBlank()) point.comment else "—",
+                            onClick = {
+                                if (point.pointStartTime == currentActivePoint?.pointStartTime)
+                                    onAddCommentForLive()
+                                else
+                                    onCommentClick(point)
+                            }
                         )
-                    }
-
-                    // ── IMAGE cell ──
-                    if (showImageColumn) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    if (point.pointStartTime == currentActivePoint?.pointStartTime) {
-                                        onCaptureImageForLive()
-                                    } else {
-                                        onImageClick(point)
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (!point.imagePath.isNullOrEmpty()) {
+                    if (sheetSettings.showImage) {
+                        val imgMod = Modifier
+                            .widthIn(min = naturalDp[col])
+                            .padding(horizontal = 4.dp)
+                            .clickable {
+                                if (point.pointStartTime == currentActivePoint?.pointStartTime)
+                                    onCaptureImageForLive()
+                                else
+                                    onImageClick(point)
+                            }
+                        Box(imgMod, contentAlignment = Alignment.Center) {
+                            if (!point.imagePath.isNullOrBlank())
                                 Image(
                                     painter = rememberAsyncImagePainter(point.imagePath),
                                     contentDescription = null,
                                     modifier = Modifier.size(48.dp)
                                 )
-                            } else {
-                                Text("—", textAlign = TextAlign.Center)
-                            }
+                            else
+                                Text("—")
                         }
+                        col++
                     }
-                    /* ─────  NEW:  Cycle  ───── */
-                    if (showCycleColumn) {
-                        Text(
-                            text     = "${point.cycleNumber}",
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
+                    if (sheetSettings.showCycle && hasPresetLoaded)
+                        cell("${point.cycleNumber}")
                 }
             }
         }
     }
 }
+
 
 
 @Composable
@@ -4360,6 +4403,8 @@ class MainActivity : ComponentActivity() {
         _elapsedTime.value = 0L
         _points.clear()
         currentActivePoint = null
+        currentCycleNumber = 1                 // start counting cycles from 1 again
+        activeCycle = activeCycle?.copy(currentIndex = 0)   // rewind preset (if one is loaded)
     }
 
     private fun updateElapsedTime() {
