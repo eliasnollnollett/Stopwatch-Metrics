@@ -1147,7 +1147,7 @@ fun PresetExportPickerDialog(
     /* ---- UI ---- */
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Export Presets") },
+        title = { Text("Export Presets") },
 
         text = {
             Column(Modifier.heightIn(max = 300.dp)) {
@@ -1165,7 +1165,7 @@ fun PresetExportPickerDialog(
                         }
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("Export all presets")
+                    Text("Export all presets")
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -1375,11 +1375,11 @@ fun NewCycleTile(
         Spacer(Modifier.height(6.dp))
 
         /* text lines – normal weight */
-        Text("Tap: New Cycle",        color = contentCol, style = MaterialTheme.typography.labelSmall)
+        Text("Tap: New Cycle",        color = contentCol, style = MaterialTheme.typography.labelSmall)
         val presetName = activeCycle?.preset?.name ?: "—"
-        Text("Preset: $presetName",   color = contentCol, style = MaterialTheme.typography.labelSmall)
+        Text("Preset: $presetName",   color = contentCol, style = MaterialTheme.typography.labelSmall)
         val nextStep   = activeCycle?.preset?.steps?.getOrNull(index) ?: "—"
-        Text("Next: $nextStep ($index/$total)",
+        Text("Next: $nextStep ($index/$total)",
             color = contentCol,
             style = MaterialTheme.typography.labelSmall)
     }
@@ -2261,7 +2261,7 @@ fun PresetCycleListDialog(
     confirmDeleteOf?.let { doomed ->
         AlertDialog(
             onDismissRequest = { confirmDeleteOf = null },
-            title   = { Text("Delete Preset") },
+            title   = { Text("Delete Preset") },
             text    = { Text("Are you sure you want to delete \"${doomed.name}\"?") },
             confirmButton = {
                 Button(onClick = {
@@ -2278,13 +2278,8 @@ fun PresetCycleListDialog(
     }
 }
 
-
-
-
-
-
-
-
+//NBSP
+// 
 
 @Composable
 fun NewPresetDialog(
@@ -4350,56 +4345,59 @@ class MainActivity : ComponentActivity() {
 
     private fun newPoint() {
 
-        /* ── 1  ensure the stopwatch is running (your current logic already does this) ── */
-        if (!_isRunning.value) toggleStopwatch()          // harmless if it’s already running
+        // 0 ── make sure the watch is running
+        if (!_isRunning.value) toggleStopwatch()
 
-        /* ── 2  if there is no live point yet, create one right now ── */
+        val now = System.currentTimeMillis()
+
+        // 1 ── if we have no live point yet, create one immediately
         if (currentActivePoint == null) {
-            currentPointStartTime = System.currentTimeMillis()
+            currentPointStartTime = now
             currentActivePoint = PointData(
-                elapsedTime      = 0L,
-                pointStartTime   = currentPointStartTime,
-                cycleNumber     = currentCycleNumber
+                elapsedTime    = 0L,
+                pointStartTime = currentPointStartTime,
+                cycleNumber    = currentCycleNumber
             )
         }
 
-        /* ── 3  the very first point (elapsed == 0) gets the first preset step ── */
+        // 2 ── very first tap → stamp 1st preset step and bail out
         if (_elapsedTime.value == 0L) {
             activeCycle?.let { cycle ->
-                val step = cycle.preset.steps.getOrNull(cycle.currentIndex)
-                if (step != null) {
-                    // mutate the existing live point instead of .copy(...)
+                cycle.preset.steps.getOrNull(cycle.currentIndex)?.let { step ->
                     currentActivePoint?.comment = step
                     activeCycle = cycle.copy(currentIndex = cycle.currentIndex + 1)
                 }
             }
-            return            // keep the early-exit
+            return
         }
 
-        /* ── 4  everything below is unchanged “normal” next‑point logic ────────── */
+        // 3 ── commit the previous live point **only if it had real duration**
+        currentActivePoint?.let { live ->
+            if (live.elapsedTime > 50L) {        // <── guard-rail phantom point "0.00"
+                _points.add(live)
+            }
+        }
 
-        // commit the previous live point
-        currentActivePoint?.let { _points.add(it) }
-
-        // start a fresh live point
-        startTime         = System.currentTimeMillis()
+        // 4 ── start a fresh live point
+        startTime         = now
         accumulatedTime   = 0L
         _elapsedTime.value= 0L
+        currentPointStartTime = now
         currentActivePoint = PointData(
             elapsedTime    = 0L,
-            pointStartTime = startTime,
+            pointStartTime = currentPointStartTime,
             cycleNumber    = currentCycleNumber
         )
 
-        // stamp the next preset step, if any
+        // 5 ── stamp the next preset step, if any
         activeCycle?.let { cycle ->
-            val step = cycle.preset.steps.getOrNull(cycle.currentIndex)
-            if (step != null) {
+            cycle.preset.steps.getOrNull(cycle.currentIndex)?.let { step ->
                 currentActivePoint = currentActivePoint!!.copy(comment = step)
                 activeCycle = cycle.copy(currentIndex = cycle.currentIndex + 1)
             }
         }
     }
+
 
     private fun resetStopwatch() {
         _isRunning.value = false
