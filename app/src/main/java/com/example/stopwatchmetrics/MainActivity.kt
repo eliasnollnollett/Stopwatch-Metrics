@@ -176,19 +176,19 @@ import androidx.camera.core.Preview as CameraXPreview
 
 @SuppressLint("DefaultLocale")
 fun formatTime(timeMs: Long, timeFormatSetting: TimeFormatSetting = TimeFormatSetting()): String {
+    val totalSeconds   = timeMs / 1000         // whole seconds
+    val hundredths     = (timeMs % 1000) / 10  // 0-99
+
     return if (timeFormatSetting.useShortFormat) {
-        Log.d("DEBUG", "Formatting time in short format")
-        // Format as "ss.00"
-        val seconds = timeMs / 1000
-        val hundredths = (timeMs % 1000) / 10
-        String.format("%02d.%02d", seconds, hundredths)
+        // SHORT = always seconds.hundredths
+        String.format("%d.%02d", totalSeconds, hundredths)
     } else {
-        Log.d("DEBUG", "Formatting time in long format")
-        // Format as "mm:ss.00"
-        val minutes = timeMs / 60000
-        val seconds = (timeMs / 1000) % 60
-        val hundredths = (timeMs % 1000) / 10
-        String.format("%02d:%02d.%02d", minutes, seconds, hundredths)
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        if (minutes == 0L)
+            String.format("%d.%02d", seconds, hundredths) // 57.74
+        else
+            String.format("%d:%02d.%02d", minutes, seconds, hundredths) // 1:24.05
     }
 }
 
@@ -428,7 +428,8 @@ fun exportExcelFile(
     context: Context,
     points: List<PointData>,
     settings: SheetSettings,
-    timeFormatSetting: TimeFormatSetting   // Added parameter
+    timeFormatSetting: TimeFormatSetting,   // Added parameter
+    presetName: String? = null               // <- NEW
 ): File {
     val workbook = XSSFWorkbook()
     val sheet = workbook.createSheet("Points")
@@ -541,7 +542,14 @@ fun exportExcelFile(
     val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
 
     val timeStamp  = SimpleDateFormat("yyyy-MM-dd, HH:mm", Locale.getDefault()).format(Date())
-    val fileName   = "exported_points_$timeStamp.xlsx"
+
+    val safePreset = presetName
+        ?.takeIf { it.isNotBlank() }
+        ?.replace(Regex("""[\\/:*?"<>|]"""), "_")   // scrub illegal filename chars
+        ?.let   { " - $it" }                       // " - Elevator"
+        ?: ""                                      // nothing if null/blank
+
+    val fileName   = "exported_points_${timeStamp}$safePreset.xlsx"
     val file       = File(exportDir, fileName)
 
     FileOutputStream(file).use { workbook.write(it) }
@@ -984,6 +992,7 @@ fun PointTable(
                     if (sheetSettings.showImage) {
                         val imgMod = Modifier
                             .widthIn(min = naturalDp[col])
+                            .weight(naturalDp[col].value, fill = true)   // ★ keep Image cells in the same grid
                             .padding(horizontal = 4.dp)
                             .clickable {
                                 if (point.pointStartTime == currentActivePoint?.pointStartTime)
@@ -991,6 +1000,7 @@ fun PointTable(
                                 else
                                     onImageClick(point)
                             }
+
                         Box(imgMod, contentAlignment = Alignment.Center) {
                             if (!point.imagePath.isNullOrBlank())
                                 Image(
@@ -1548,7 +1558,7 @@ fun SettingsScreen(
                 .padding(innerPadding)
                 .padding(16.dp)
         ) {
-            Text("Toggle columns in your sheet:", style = MaterialTheme.typography.titleMedium)
+            Text("Toggle columns in your Point Table:", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(16.dp))
 
             SettingsRow(
@@ -1642,7 +1652,7 @@ fun SettingsScreen(
 
 
             SettingsRow(
-                label = "Use short time format (ss.00)",
+                label = "Show times as seconds only (ss.00)",
                 checked = timeFormatSetting.useShortFormat,
                 onCheckedChange = { checked ->
                     // update UI state
@@ -2283,68 +2293,59 @@ fun NewPresetDialog(
     onSave: (PresetCycle) -> Unit
 ) {
     var presetName by remember { mutableStateOf("") }
-    val steps = remember { mutableStateListOf<String>() }
-    if (steps.isEmpty()) {
-        steps.add("") // start with one blank field
-    }
+    val steps       = remember { mutableStateListOf<String>() }
+    if (steps.isEmpty()) steps.add("")          // start with one field
 
     AlertDialog(
+        // give the whole sheet a generous max-height
+        modifier = Modifier
+            .fillMaxWidth(1f)
+            .heightIn(min = 300.dp, max = 600.dp),
+
         onDismissRequest = onDismiss,
         title = { Text("Create New Preset") },
+
         text = {
             Column(
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 200.dp, max = 440.dp)
+                    .heightIn(min = 300.dp, max = 600.dp)
             ) {
-                val mono = MaterialTheme.colorScheme.onBackground   // black in light‑mode, white in dark‑mode
-
+                /* ── name ───────────────────────────────────────── */
                 OutlinedTextField(
                     value         = presetName,
                     onValueChange = { presetName = it },
-                    label         = { Text("Preset Name") },
+                    label         = { Text("Preset Name") },
                     singleLine    = true,
-                    modifier      = Modifier.fillMaxWidth(),
-
-                    /*  ►  leave this ‘false’ so the text‑field itself never turns red  */
-                    isError       = false,
-
-                    supportingText = {
-                        when {
-                            presetName.isBlank() ->
-                                Text("Name cannot be empty", color = mono)
-                            existingNames.contains(presetName) ->
-                                Text("A preset with that name already exists", color = mono)
-                        }
-                    }
+                    modifier      = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(16.dp))
 
+                Spacer(Modifier.height(16.dp))
                 Text("Steps:", style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(8.dp))
 
-                LazyColumn {
+                /* ── list now scrolls ──────────────────────────── */
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)               // <—— key line
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     items(steps.size) { index ->
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             TextField(
                                 value = steps[index],
-                                onValueChange = { newText -> steps[index] = newText },
-                                label = { Text("Step ${index + 1}") },
+                                onValueChange = { steps[index] = it },
                                 singleLine = true,
+                                label = { Text("Step ${index + 1}") },
                                 modifier = Modifier.weight(1f)
                             )
-                            Spacer(Modifier.width(8.dp))
                             IconButton(onClick = {
-                                if (steps.size > 1) {
-                                    steps.removeAt(index)
-                                } else {
-                                    steps[index] = ""
-                                }
+                                if (steps.size > 1) steps.removeAt(index)
+                                else               steps[0] = ""
                             }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Remove step")
                             }
@@ -2354,42 +2355,37 @@ fun NewPresetDialog(
 
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
-                    onClick = { steps.add("") },
+                    onClick  = { steps.add("") },   // now you can add as many as you like
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add another step")
+                    Icon(Icons.Default.Add, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("Add Step")
                 }
             }
         },
+
         confirmButton = {
             Button(
-                onClick = {
-                    val trimmedName = presetName.trim()
-                    val validSteps = steps.map { it.trim() }.filter { it.isNotBlank() }
-                    if (
-                        trimmedName.isNotBlank() &&
-                        !existingNames.contains(trimmedName) &&
-                        validSteps.isNotEmpty()
-                    ) {
-                        onSave(PresetCycle(name = trimmedName, steps = validSteps))
-                    }
-                },
                 enabled = presetName.trim().isNotBlank()
-                        && !existingNames.contains(presetName.trim())
                         && steps.all { it.trim().isNotBlank() }
-            ) {
-                Text("Save Preset")
-            }
+                        && presetName !in existingNames,
+                onClick = {
+                    onSave(
+                        PresetCycle(
+                            name  = presetName.trim(),
+                            steps = steps.map { it.trim() }
+                        )
+                    )
+                }
+            ) { Text("Save Preset") }
         },
         dismissButton = {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
+
 
 
 // Dialog to prompt for file renaming.
@@ -2750,32 +2746,22 @@ fun MainScreen(
     onConfigurePresets: () -> Unit,
     showPresetDialog : Boolean,
     onShowPresetDialogChange: (Boolean) -> Unit,
-
-
     onCycleIncrement: () -> Unit,
 
     ) {
 
     val context = LocalContext.current
 
-   var showPresetListDialog by remember { mutableStateOf(false) }
-   var showNewPresetDialog by remember { mutableStateOf(false) }
+    val scope   = rememberCoroutineScope()
 
-    // 1) read the preference – initial = null means “nothing loaded yet”
-    val showTipsPref: Boolean? by readShowTips(context)
-        .collectAsState(initial = null)   // type is Boolean? because of the var above
+    var showTipsDialog by remember { mutableStateOf(false) }     // UI flag
+    val showTipsPref  by readShowTips(context)
+        .collectAsState(initial = false)                    // persisted flag
 
-// 2) local UI-state for the dialog itself
-    var showTipsDialog by remember { mutableStateOf(false) }
-
-// 3) open the dialog once the preference arrives and is `true`
+    /* first app launch => DataStore emits `true` once, we open the dialog */
     LaunchedEffect(showTipsPref) {
-        if (showTipsPref == true) {       // only when it’s explicitly true
-            showTipsDialog = true
-        }
+        if (showTipsPref) showTipsDialog = true
     }
-
-    var dontShowAgain by remember { mutableStateOf(false) }   // ② local state
 
     var selectedPointForComment by remember { mutableStateOf<PointData?>(null) }
     var selectedPointForImage by remember { mutableStateOf<PointData?>(null) }
@@ -3271,13 +3257,20 @@ fun MainScreen(
     // Dialogs:
     when (activeDialog) {
         is ActiveDialog.Rename -> {
-            val defaultName = SimpleDateFormat("yyyy-MM-dd, HH:mm", Locale.getDefault()).format(Date())
+            // 1. time-stamp + optional preset name
+            val timeStamp  = SimpleDateFormat("yyyy-MM-dd, HH:mm", Locale.getDefault()).format(Date())
+            val presetPart = activeCycle?.preset?.name?.takeIf { it.isNotBlank() }?.let { " - $it" } ?: ""
+            val defaultName = timeStamp + presetPart
+
             RenameFileDialog(
                 defaultName = defaultName,
+
+                // ✅ delegate the work to the Activity
                 onConfirm = { newName ->
-                    onRenameConfirm(newName)
-                    onActiveDialogChange(ActiveDialog.None)
+                    onRenameConfirm(newName)                     // <- calls saveCsvFile + clears isDirty
+                    onActiveDialogChange(ActiveDialog.None)      // <- closes the dialog
                 },
+
                 onDismiss = { onActiveDialogChange(ActiveDialog.None) }
             )
         }
@@ -3330,45 +3323,25 @@ fun MainScreen(
     if (showTipsDialog) {
         AlertDialog(
             onDismissRequest = { showTipsDialog = false },
-            title = { Text("Start Guide") },
-
-            /* ───────────────────────────────────── text ───────────────────────────────────── */
-            text = {
+            title = { Text("Quick guide") },
+            text  = {
                 Column {
-
-                    // plain-text bullets
-                    Text("• You can use the volume buttons for Play/Pause and New-Point (tap and hold).")
-                    Text("• Tweak the layout in Settings to match your preferences.")
-                    Text("• Swipe left / right for the three different views.")
-                    Text("• In Saved Files you can filter, view, delete or export to Excel.")
                     Text("• Tap the info icon any time to see this guide again.")
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // “don’t show again” checkbox
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = dontShowAgain,
-                            onCheckedChange = { dontShowAgain = it }
-                        )
-                        Text("Don't show again")
-                    }
+                    Text("• Use the volume buttons to Play/Pause or add a New-Point (tap vs. hold).")
+                    Text("• Swipe left / right for the three main views.")
+                    Text("• Tweak the layout in Settings to match your workflow.")
+                    Text("• Saved Files lets you filter, view, delete or export to Excel.")
                 }
             },
-
-            /* ───────────────────────────── confirm button ───────────────────────────── */
             confirmButton = {
                 Button(
                     onClick = {
-                        if (dontShowAgain) {
-                            // persist the preference so the dialog won’t appear next launch
-                            CoroutineScope(Dispatchers.IO).launch {
-                                saveShowTips(context, false)
-                            }
+                        showTipsDialog = false          // close dialog
+                        scope.launch {                  // <-- run suspend code here
+                            saveShowTips(context, false)
                         }
-                        showTipsDialog = false
                     }
-                ) { Text("Got it!") }
+                ) { Text("Got it") }
             }
         )
     }
@@ -3396,13 +3369,48 @@ class MainActivity : ComponentActivity() {
     private var currentCycleNumber by mutableStateOf(1)
 
 
-    private fun defaultCycles(): List<PresetCycle> {
-        return listOf(
-            PresetCycle(name = "Elevator", steps = listOf("In", "Up", "Out", "Down")),
-            PresetCycle(name = "CoffeeBreak", steps = listOf("Pour", "Stir", "Sip", "Done"))
-            // …add any other built‐in presets you’d like…
+    private fun defaultCycles(): List<PresetCycle> = listOf(
+        // Compact demo
+        PresetCycle(
+            name  = "Elevator",
+            steps = listOf("In", "Up", "Out", "Down")
+        ),
+
+        // Practical 10-step example
+        PresetCycle(
+            name  = "Assembly Line",
+            steps = listOf(
+                "Infeed",
+                "Pick Part",
+                "Align Part",
+                "Screw / Fasten",
+                "Torque Check",
+                "Insert Label",
+                "Visual Inspect",
+                "Place on Conveyor",
+                "Press Start Button",
+                "Wait For Next"
+            )
+        ),
+
+        // Sandbox for experimenting
+        PresetCycle(
+            name  = "Morning Routine",
+            steps = listOf(
+                "Alarm Off",
+                "Bathroom",
+                "Shower On",
+                "Shower Off",
+                "Dress",
+                "Breakfast",
+                "Brew Coffee",
+                "Pack Bag",
+                "Leave Home",
+                "Arrive Work"
+            )
         )
-    }
+    )
+
 
 
     private var isDirty by mutableStateOf(false)
@@ -3821,9 +3829,7 @@ class MainActivity : ComponentActivity() {
                 val activityInstance = this
 
                 // at the very top of onCreate()   (inside setContent { … })
-                val showTipsOnStart by readShowTips(context).collectAsState(initial = true)
-                var showTipsDialog by remember { mutableStateOf(showTipsOnStart) }
-                var dontShowAgain   by remember { mutableStateOf(false) }
+
 
                 // Local UI state.
                 var showCommentDialog by remember { mutableStateOf(false) }
@@ -4065,10 +4071,7 @@ class MainActivity : ComponentActivity() {
                             onConfirm = { newComment ->
                                 currentActivePoint?.let { live ->
                                     val idx = _points.indexOf(live)
-                                    val updatedComment = if (live.comment.isNotBlank())
-                                        "${live.comment}, $newComment"
-                                    else
-                                        newComment
+                                    val updatedComment = newComment
 
                                     if (idx != -1) {
                                         // historical point (unlikely here)
@@ -4361,15 +4364,16 @@ class MainActivity : ComponentActivity() {
         }
 
         /* ── 3  the very first point (elapsed == 0) gets the first preset step ── */
-        if (_elapsedTime.value == 0L) {                   // i.e. we just started
+        if (_elapsedTime.value == 0L) {
             activeCycle?.let { cycle ->
                 val step = cycle.preset.steps.getOrNull(cycle.currentIndex)
                 if (step != null) {
-                    currentActivePoint = currentActivePoint!!.copy(comment = step)
+                    // mutate the existing live point instead of .copy(...)
+                    currentActivePoint?.comment = step
                     activeCycle = cycle.copy(currentIndex = cycle.currentIndex + 1)
                 }
             }
-            return                                         // nothing else to commit yet
+            return            // keep the early-exit
         }
 
         /* ── 4  everything below is unchanged “normal” next‑point logic ────────── */
@@ -4423,7 +4427,8 @@ class MainActivity : ComponentActivity() {
             context             = this,
             points              = points,
             settings            = sheetSettings,
-            timeFormatSetting   = currentTimeFormatSetting
+            timeFormatSetting   = currentTimeFormatSetting,
+            presetName        = activeCycle?.preset?.name
         )
 
         // optional: keep or drop the Toast
