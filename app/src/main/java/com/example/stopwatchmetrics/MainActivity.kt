@@ -2778,6 +2778,8 @@ fun MainScreen(
     val medianTime   = calculateMedian(points.map { it.elapsedTime })
     val stdDevTime   = calculateStdDev(points.map { it.elapsedTime })
     val averageTime  = points.map { it.elapsedTime }.average().toLong()
+    val minTime   = points.minOfOrNull { it.elapsedTime } ?: 0L
+    val rangeTime = maxTime - minTime         // max − min, always ≥ 0
 
 
     val displayPoints by remember(points, currentActivePoint?.pointStartTime, currentActivePoint?.elapsedTime, isRunning) {
@@ -3225,18 +3227,35 @@ fun MainScreen(
                             )
 
                             Spacer(Modifier.height(12.dp))
-                            Column(
-                                Modifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.End          // right-align like before
+                            /* ── stats under the graph ───────────────────────────────────────── */
+
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)        // keep same inset as the graph
                             ) {
-                                Text("Max:     ${formatTime(maxTime,       timeFormatSetting)}",
-                                    style = MaterialTheme.typography.bodyMedium)
-                                Text("Median:  ${formatTime(medianTime.toLong(), timeFormatSetting)}",
-                                    style = MaterialTheme.typography.bodyMedium)
-                                Text("Average: ${formatTime(averageTime,  timeFormatSetting)}",
-                                    style = MaterialTheme.typography.bodyMedium)
-                                Text("Std Dev: ${formatTime(stdDevTime.toLong(), timeFormatSetting)}",
-                                    style = MaterialTheme.typography.bodyMedium)
+                                /* LEFT column: Max / Min / Range */
+                                Column(Modifier.weight(1f)) {
+                                    Text("Max:    ${formatTime(maxTime,    timeFormatSetting)}",
+                                        style = MaterialTheme.typography.bodyMedium)
+                                    Text("Min:    ${formatTime(minTime,    timeFormatSetting)}",
+                                        style = MaterialTheme.typography.bodyMedium)
+                                    Text("Range:  ${formatTime(rangeTime,  timeFormatSetting)}",
+                                        style = MaterialTheme.typography.bodyMedium)
+                                }
+
+                                /* RIGHT column: Median / Average / Std Dev – right-aligned */
+                                Column(
+                                    Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.End
+                                ) {
+                                    Text("Median:  ${formatTime(medianTime.toLong(), timeFormatSetting)}",
+                                        style = MaterialTheme.typography.bodyMedium)
+                                    Text("Average: ${formatTime(averageTime,         timeFormatSetting)}",
+                                        style = MaterialTheme.typography.bodyMedium)
+                                    Text("Std Dev: ${formatTime(stdDevTime.toLong(), timeFormatSetting)}",
+                                        style = MaterialTheme.typography.bodyMedium)
+                                }
                             }
 
 
