@@ -111,7 +111,7 @@ fun readSheetSettings(context: Context): Flow<SheetSettings> =
 // ───────────────────────────────
 
 data class FastCommentsSettings(
-    val enabled: Boolean = false,
+    val enabled: Boolean = true,
     val comments: List<String> = listOf(
         "In",
         "Transport",
@@ -134,7 +134,7 @@ suspend fun saveFastCommentsSettings(context: Context, settings: FastCommentsSet
 
 fun readFastCommentsSettings(context: Context): Flow<FastCommentsSettings> =
     context.dataStore.data.map { prefs ->
-        val enabled = prefs[FAST_COMMENTS_ENABLED_KEY] ?: false
+        val enabled = prefs[FAST_COMMENTS_ENABLED_KEY] ?: true
         val savedSet = prefs[FAST_COMMENTS_LIST_KEY]
         val list = savedSet?.toList() ?: FastCommentsSettings().comments
         FastCommentsSettings(enabled = enabled, comments = list)

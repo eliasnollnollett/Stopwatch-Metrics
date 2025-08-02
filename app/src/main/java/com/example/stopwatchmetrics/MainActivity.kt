@@ -1677,6 +1677,18 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            SettingsRow(
+                label   = "Enable Fast Comments",
+                checked = fastCommentsSettings.enabled,
+                onCheckedChange = { checked ->
+                    val updated = fastCommentsSettings.copy(enabled = checked)
+                    onFastCommentsChange(updated)                  // update UI
+                    CoroutineScope(Dispatchers.IO).launch {
+                        saveFastCommentsSettings(context, updated) // persist
+                    }
+                }
+            )
+
             // EDIT FAST COMMENTS
             OutlinedButton(
                 onClick = { showFastCommentsEditDialog = true },
