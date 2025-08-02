@@ -1322,68 +1322,79 @@ fun PresetCycleEditDialog(
 
 @Composable
 fun NewCycleTile(
-    activeCycle : ActiveCycle?,              // null → disabled
+    activeCycle : ActiveCycle?,          // null → tile is disabled/greyed-out
+    cycleNumber : Int,                   // ← NEW
     onNewCycle  : () -> Unit,
     modifier    : Modifier = Modifier,
-    ringSize    : Dp = 36.dp                 // ⇦ shrink / grow the circle here
+    ringSize    : Dp = 36.dp
 ) {
-    /* ── progress math ── */
-    val total      = activeCycle?.preset?.steps?.size ?: 0
-    val index      = activeCycle?.currentIndex ?: 0        // 0‑based
-    val progress   = if (total == 0) 0f else index / total.toFloat()
-    val animProg   by animateFloatAsState(progress, label = "cycle‑progress")
-    val done       = total > 0 && index >= total           // last cycle finished?
+    /* progress maths (unchanged) */
+    val total    = activeCycle?.preset?.steps?.size ?: 0
+    val index    = activeCycle?.currentIndex ?: 0
+    val progress by animateFloatAsState(
+        if (total == 0) 0f else index / total.toFloat(),
+        label = "cycle-progress"
+    )
+    val done     = total > 0 && index >= total
 
-    /* ── colours ── */
+    /* colours (unchanged) */
     val colors     = MaterialTheme.colorScheme
     val container  = if (done) colors.onBackground else colors.background
     val contentCol = if (done) colors.background     else colors.onBackground
 
-    /* ── tile ── */
     Column(
         modifier
             .clip(RoundedCornerShape(12.dp))
-            /* ⬇️  use onBackground instead of outline */
             .border(1.dp, MaterialTheme.colorScheme.onBackground, RoundedCornerShape(12.dp))
             .background(container)
             .clickable(enabled = activeCycle != null) { onNewCycle() }
-            .padding(vertical = 12.dp, horizontal = 12.dp)
-            .then(modifier),
+            .padding(vertical = 12.dp, horizontal = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
-        /* progress ring only (no icon) */
-        Canvas(Modifier.size(ringSize)) {
-            val stroke = 5.dp.toPx()
+        /* ── ring + centred cycle number ───────────────────────── */
+        Box(Modifier.size(ringSize), contentAlignment = Alignment.Center) {
 
-            drawArc(                                   // background ring
-                color      = contentCol.copy(alpha = .25f),
-                startAngle = -90f,
-                sweepAngle = 360f,
-                useCenter  = false,
-                style      = Stroke(stroke, cap = StrokeCap.Round)
-            )
-            drawArc(                                   // animated segment
-                color      = contentCol,
-                startAngle = -90f,
-                sweepAngle = 360f * animProg,
-                useCenter  = false,
-                style      = Stroke(stroke, cap = StrokeCap.Round)
+            Canvas(Modifier.matchParentSize()) {
+                val stroke = 5.dp.toPx()
+
+                drawArc(
+                    color      = contentCol.copy(alpha = .25f),       // full ring
+                    startAngle = -90f,
+                    sweepAngle = 360f,
+                    useCenter  = false,
+                    style      = Stroke(stroke, cap = StrokeCap.Round)
+                )
+                drawArc(
+                    color      = contentCol,                          // progress segment
+                    startAngle = -90f,
+                    sweepAngle = 360f * progress,
+                    useCenter  = false,
+                    style      = Stroke(stroke, cap = StrokeCap.Round)
+                )
+            }
+
+            /* the new **cycle number** */
+            Text(
+                text   = "$cycleNumber",
+                style  = MaterialTheme.typography.labelLarge,
+                color  = contentCol
             )
         }
 
         Spacer(Modifier.height(6.dp))
 
-        /* text lines – normal weight */
-        Text("Tap: New Cycle",        color = contentCol, style = MaterialTheme.typography.labelSmall)
+        Text("Tap: New Cycle ($index/$total)",    //  ← moved progress here
+                        color = contentCol, style = MaterialTheme.typography.labelSmall)
         val presetName = activeCycle?.preset?.name ?: "—"
         Text("Preset: $presetName",   color = contentCol, style = MaterialTheme.typography.labelSmall)
         val nextStep   = activeCycle?.preset?.steps?.getOrNull(index) ?: "—"
-        Text("Next: $nextStep ($index/$total)",
+                Text("Next: $nextStep",                       //  ← progress removed from here
             color = contentCol,
             style = MaterialTheme.typography.labelSmall)
     }
 }
+
 
 
 
@@ -2741,6 +2752,7 @@ fun MainScreen(
     onConfigurePresets: () -> Unit,
     showPresetDialog : Boolean,
     onShowPresetDialogChange: (Boolean) -> Unit,
+    cycleNumber: Int,
     onCycleIncrement: () -> Unit,
 
     ) {
@@ -2980,12 +2992,13 @@ fun MainScreen(
                                         // ①  New‑Cycle tile
                                         Box(Modifier.weight(1f)) {
                                             NewCycleTile(
-                                                activeCycle = activeCycle,
-                                                onNewCycle  = {
+                                                activeCycle  = activeCycle,
+                                                cycleNumber  = cycleNumber,    // ← pass in
+                                                onNewCycle   = {
                                                     onActiveCycleChange(activeCycle.copy(currentIndex = 0))
-                                                    onCycleIncrement()               // <── bump counter in Activity
+                                                    onCycleIncrement()         // bump number in Activity
                                                 },
-                                                modifier = Modifier
+                                                modifier     = Modifier
                                                     .fillMaxWidth()
                                                     .padding(end = 8.dp)
                                             )
@@ -3981,7 +3994,7 @@ class MainActivity : ComponentActivity() {
                                 showPresetDialog = showPresetDialog,
                                 onShowPresetDialogChange = { showPresetDialog = it },
 
-
+                                cycleNumber       = currentCycleNumber,
                                 onCycleIncrement         = { currentCycleNumber++ }
 
 
