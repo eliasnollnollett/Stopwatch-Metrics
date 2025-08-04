@@ -153,6 +153,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import org.apache.poi.ss.usermodel.ClientAnchor
 import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.xssf.usermodel.XSSFClientAnchor
@@ -546,7 +547,7 @@ fun exportExcelFile(
     val safePreset = presetName
         ?.takeIf { it.isNotBlank() }
         ?.replace(Regex("""[\\/:*?"<>|]"""), "_")   // scrub illegal filename chars
-        ?.let   { " - $it" }                       // " - Elevator"
+        ?.let   { " - $it" }                       // " - Elevator Up"
         ?: ""                                      // nothing if null/blank
 
     val fileName   = "exported_points_${timeStamp}$safePreset.xlsx"
@@ -3400,7 +3401,7 @@ class MainActivity : ComponentActivity() {
     // ── NEW: Hold all saved presets in memory (you can later persist via DataStore) ──
     private var allPresetCycles by mutableStateOf(
         listOf(
-            PresetCycle(name = "Elevator", steps = listOf("In", "Up", "Out", "Down")),
+            PresetCycle(name = "Elevator Up", steps = listOf("In", "Up", "Out", "Down")),
             // (You can add more defaults here if you like)
         )
     )
@@ -3411,7 +3412,7 @@ class MainActivity : ComponentActivity() {
     private fun defaultCycles(): List<PresetCycle> = listOf(
         // Compact demo
         PresetCycle(
-            name  = "Elevator",
+            name  = "Elevator Up",
             steps = listOf("In", "Up", "Out", "Down")
         ),
 
@@ -3433,21 +3434,7 @@ class MainActivity : ComponentActivity() {
         ),
 
         // Sandbox for experimenting
-        PresetCycle(
-            name  = "Morning Routine",
-            steps = listOf(
-                "Alarm Off",
-                "Bathroom",
-                "Shower On",
-                "Shower Off",
-                "Dress",
-                "Breakfast",
-                "Brew Coffee",
-                "Pack Bag",
-                "Leave Home",
-                "Arrive Work"
-            )
-        )
+
     )
 
 
@@ -3531,6 +3518,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
+
+    /** Shows a dialog after importing presets. `null` = no dialog */
+    private var importSummary by mutableStateOf<ImportSummary?>(null)
+
+    data class ImportSummary(
+        val added: Int,
+        val updated: Int,
+        val skipped: Int
+    )
 
     // For viewing files.
     private var selectedFile: File? by mutableStateOf(null)
@@ -3642,10 +3639,13 @@ class MainActivity : ComponentActivity() {
             saveAllPresetCycles(this@MainActivity, merged)
             allPresetCycles = merged
 
-            ToastHelper.showToast(
-                this@MainActivity,
-                "Imported: $added new, $updated updated, ${incoming.size - added - updated} skipped"
-            )
+            withContext(Dispatchers.Main) {
+                importSummary = ImportSummary(
+                    added   = added,
+                    updated = updated,
+                    skipped = incoming.size - added - updated
+                )
+            }
         }
     }
 
@@ -3788,7 +3788,7 @@ class MainActivity : ComponentActivity() {
 
         // Step A: define your built-in defaults
         val defaultCycles = listOf(
-            PresetCycle("Elevator", listOf("In", "Up", "Out", "Down")),
+            PresetCycle("Elevator Up", listOf("In", "Up", "Out", "Down")),
             PresetCycle("Process", listOf("In", "Load", "Process", "Unload", "Out"))
         )
 
@@ -4221,6 +4221,25 @@ class MainActivity : ComponentActivity() {
                             onExport = { list ->
                                 exportSelectedPresets(list)
                                 showExportPicker = false
+                            }
+                        )
+                    }
+
+                    importSummary?.let { s ->
+                        AlertDialog(
+                            onDismissRequest = { importSummary = null },
+                            title = { Text("Preset import complete") },
+                            text  = {
+                                Text(
+                                    "${s.added} imported, " +
+                                            "${s.updated} overwritten, " +
+                                            "${s.skipped} skipped."
+                                )
+                            },
+                            confirmButton = {
+                                Button(onClick = { importSummary = null }) {
+                                    Text("OK")
+                                }
                             }
                         )
                     }
