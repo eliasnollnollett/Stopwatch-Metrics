@@ -3800,7 +3800,7 @@ class MainActivity : ComponentActivity() {
             if (allPresetCycles.isEmpty()) {
                 // First-run (or no saved presets): populate with defaults
                 allPresetCycles = defaultCycles
-                // TODO: write `allPresetCycles` into DataStore here so that next time it’s restored
+                //  `allPresetCycles` into DataStore here so that next time it’s restored
             } else {
                 // You already have saved cycles (merging defaults if you wish):
                 val saved = allPresetCycles
