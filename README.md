@@ -20,6 +20,9 @@ Clone the repository and open it in Android Studio:
 
 git clone https://github.com/eliasnollnollett/stopwatch-metrics.git
 
+### Configuration
+Copy `gradle.properties.example` to `gradle.properties` and fill in your own values.
+
 
 Build and run on an Android device or emulator.
 
