@@ -1,0 +1,11 @@
+# gradle.properties.example
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+kotlin.code.style=official
+android.nonTransitiveRClass=true
+
+# --- Signing (fill in locally, do not commit) ---
+STORE_FILE=/path/to/keystores/your-upload-key.jks
+STORE_PASSWORD=YOUR_STORE_PASSWORD
+KEY_ALIAS=YOUR_KEY_ALIAS
+KEY_PASSWORD=YOUR_KEY_PASSWORD
