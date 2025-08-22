@@ -237,7 +237,7 @@ fun generateCSV(
     val enabledHeaders = allHeaders.filter { header ->
         when (header) {
             "Event"       -> settings.showEvent
-            "Elapsed Time"        -> settings.showTime
+            "Elapsed Time"        -> settings.showElapsedTime
             "TMU"         -> settings.showTMU
             "Start Time"  -> settings.showStartTime
             "Comment"     -> settings.showComment
@@ -440,7 +440,7 @@ fun exportExcelFile(
     val headerRow = sheet.createRow(0)
 
     if (settings.showEvent) headerRow.createCell(colIndex++).setCellValue("Event")
-    if (settings.showTime) headerRow.createCell(colIndex++).setCellValue("Elapsed Time")
+    if (settings.showElapsedTime) headerRow.createCell(colIndex++).setCellValue("Elapsed Time")
     if (settings.showTMU) headerRow.createCell(colIndex++).setCellValue("TMU")
     if (settings.showStartTime) headerRow.createCell(colIndex++).setCellValue("Start Time")
     if (settings.showComment) headerRow.createCell(colIndex++).setCellValue("Comment")
@@ -458,7 +458,7 @@ fun exportExcelFile(
         if (settings.showEvent) {
             row.createCell(currentCol++).setCellValue((index + 1).toDouble())
         }
-        if (settings.showTime) {
+        if (settings.showElapsedTime) {
             val cell = row.createCell(currentCol++)
             val dataFormat = workbook.createDataFormat()
             val cellStyle = workbook.createCellStyle()
@@ -873,7 +873,7 @@ fun EventTable(
     /* ───── decide visible columns ───── */
     val columns = buildList {
         if (sheetSettings.showEvent   ) add("Event")
-        if (sheetSettings.showTime    ) add("Elapsed Time")
+        if (sheetSettings.showElapsedTime    ) add("Elapsed Time")
         if (sheetSettings.showTMU     ) add("TMU")
         if (sheetSettings.showStartTime) add("Start Time")
         if (sheetSettings.showComment ) add("Comment")
@@ -907,7 +907,7 @@ fun EventTable(
         events.forEachIndexed { rowIdx, event ->
             var col = 0
             if (sheetSettings.showEvent   ) update(col++, "#${rowIdx + 1}")
-            if (sheetSettings.showTime    ) update(col++, formatTime(event.elapsedTime, timeFormatSetting))
+            if (sheetSettings.showElapsedTime    ) update(col++, formatTime(event.elapsedTime, timeFormatSetting))
             if (sheetSettings.showTMU     ) update(col++, "${(event.elapsedTime / 36).toInt()}")
             if (sheetSettings.showStartTime) update(col++, formatEventInTime(event.eventStartTime))
             if (sheetSettings.showComment ) update(col++, event.comment.ifBlank { "—" })
@@ -974,7 +974,7 @@ fun EventTable(
 
                     if (sheetSettings.showEvent)
                         cell("#${events.size - realIdx}")
-                    if (sheetSettings.showTime)
+                    if (sheetSettings.showElapsedTime)
                         cell(formatTime(event.elapsedTime, timeFormatSetting))
                     if (sheetSettings.showTMU)
                         cell("${(event.elapsedTime / 36).toInt()}")
@@ -1421,7 +1421,7 @@ fun CsvTable(csvContent: String, sheetSettings: SheetSettings) {
     val enabledIndices = headerCells.mapIndexedNotNull { index, column ->
         when (column) {
             "Event"       -> if (sheetSettings.showEvent)       index else null
-            "Elapsed Time"        -> if (sheetSettings.showTime)        index else null
+            "Elapsed Time"        -> if (sheetSettings.showElapsedTime)        index else null
             "TMU"         -> if (sheetSettings.showTMU)         index else null
             "Start Time"  -> if (sheetSettings.showStartTime)   index else null
             "Comment"     -> if (sheetSettings.showComment)     index else null
@@ -1580,8 +1580,8 @@ fun SettingsScreen(
             )
             SettingsRow(
                 label = "Show Elapsed Time",
-                checked = sheetSettings.showTime,
-                onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showTime = it)) }
+                checked = sheetSettings.showElapsedTime,
+                onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showElapsedTime = it)) }
             )
 
             Box(
