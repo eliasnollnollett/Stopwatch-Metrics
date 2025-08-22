@@ -193,7 +193,7 @@ fun formatTime(timeMs: Long, timeFormatSetting: TimeFormatSetting = TimeFormatSe
     }
 }
 
-fun formatPointInTime(timeMs: Long): String {
+fun formatEventInTime(timeMs: Long): String {
     val date = Date(timeMs)
     val formatter = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     return formatter.format(date)
@@ -207,9 +207,9 @@ data class ActiveCycle(
     var currentIndex: Int = 0
 )
 
-data class PointData(
+data class EventData(
     var elapsedTime: Long,
-    val pointStartTime: Long,
+    val eventStartTime: Long,
     var comment: String = "",
     var imagePath: String? = null,
     val cycleNumber   : Int = 1
@@ -217,14 +217,14 @@ data class PointData(
 
 
 fun generateCSV(
-    points: List<PointData>,
+    events: List<EventData>,
     settings: SheetSettings,
     timeFormatSetting: TimeFormatSetting
 ): String {
 
     /* ── 1 . add the header ────────────────────────────────────────── */
     val allHeaders = listOf(
-        "Point",
+        "Event",
         "Time",
         "TMU",
         "Start Time",
@@ -236,7 +236,7 @@ fun generateCSV(
     /* ── 2 . respect the toggle in Settings ────────────────────────── */
     val enabledHeaders = allHeaders.filter { header ->
         when (header) {
-            "Point"       -> settings.showPoint
+            "Event"       -> settings.showEvent
             "Time"        -> settings.showTime
             "TMU"         -> settings.showTMU
             "Start Time"  -> settings.showStartTime
@@ -249,18 +249,18 @@ fun generateCSV(
     val headerLine = enabledHeaders.joinToString(",")
 
     /* ── 3 . build each row ────────────────────────────────────────── */
-    val rows = points.mapIndexed { index, point ->
-        val formattedTime = formatTime(point.elapsedTime, timeFormatSetting)
+    val rows = events.mapIndexed { index, event ->
+        val formattedTime = formatTime(event.elapsedTime, timeFormatSetting)
 
         val allCells = listOf(
 
-            "#${index + 1}",                       // Point
+            "#${index + 1}",                       // Event
             formattedTime,                         // Time
-            "${(point.elapsedTime / 36).toInt()}", // TMU
-            formatPointInTime(point.pointStartTime), // Start Time
-            point.comment,                         // Comment
-            point.imagePath ?: "",                 // Image
-            "${point.cycleNumber}",                 // NEW  (index 0 == “Cycle”)
+            "${(event.elapsedTime / 36).toInt()}", // TMU
+            formatEventInTime(event.eventStartTime), // Start Time
+            event.comment,                         // Comment
+            event.imagePath ?: "",                 // Image
+            "${event.cycleNumber}",                 // NEW  (index 0 == “Cycle”)
         )
 
         /* keep only the enabled columns */
@@ -424,22 +424,22 @@ fun bitmapToByteArray(bitmap: Bitmap, quality: Int = 100): ByteArray {
 
 
 
-// Function to export points as an XLSX file with embedded images.
+// Function to export events as an XLSX file with embedded images.
 fun exportExcelFile(
     context: Context,
-    points: List<PointData>,
+    events: List<EventData>,
     settings: SheetSettings,
     timeFormatSetting: TimeFormatSetting,   // Added parameter
     presetName: String? = null               // <- NEW
 ): File {
     val workbook = XSSFWorkbook()
-    val sheet = workbook.createSheet("Points")
+    val sheet = workbook.createSheet("Events")
     var colIndex = 0
 
     // Create header row.
     val headerRow = sheet.createRow(0)
 
-    if (settings.showPoint) headerRow.createCell(colIndex++).setCellValue("Point")
+    if (settings.showEvent) headerRow.createCell(colIndex++).setCellValue("Event")
     if (settings.showTime) headerRow.createCell(colIndex++).setCellValue("Time")
     if (settings.showTMU) headerRow.createCell(colIndex++).setCellValue("TMU")
     if (settings.showStartTime) headerRow.createCell(colIndex++).setCellValue("Start Time")
@@ -452,10 +452,10 @@ fun exportExcelFile(
     val drawing = sheet.createDrawingPatriarch()
 
     // Populate data rows.
-    points.forEachIndexed { index, point ->
+    events.forEachIndexed { index, event ->
         val row = sheet.createRow(index + 1)
         var currentCol = 0
-        if (settings.showPoint) {
+        if (settings.showEvent) {
             row.createCell(currentCol++).setCellValue((index + 1).toDouble())
         }
         if (settings.showTime) {
@@ -466,14 +466,14 @@ fun exportExcelFile(
             if (timeFormatSetting.useShortFormat) {
                 // Short format: display total seconds with two decimals.
                 // Convert milliseconds to seconds.
-                val secondsValue = point.elapsedTime.toDouble() / 1000
+                val secondsValue = event.elapsedTime.toDouble() / 1000
                 cell.setCellValue(secondsValue)
                 // Format as a plain number, e.g., 75.32
                 cellStyle.dataFormat = dataFormat.getFormat("0.00")
             } else {
                 // Long format: display as mm:ss.00.
                 // For Excel time format, convert milliseconds into fraction of a day.
-                val excelTime = point.elapsedTime.toDouble() / (1000 * 24 * 3600)
+                val excelTime = event.elapsedTime.toDouble() / (1000 * 24 * 3600)
                 cell.setCellValue(excelTime)
                 // Format the cell as time – note that Excel interprets 1 as one full day.
                 cellStyle.dataFormat = dataFormat.getFormat("mm:ss.00")
@@ -481,16 +481,16 @@ fun exportExcelFile(
             cell.cellStyle = cellStyle
         }
         if (settings.showTMU) {
-            row.createCell(currentCol++).setCellValue((point.elapsedTime / 36).toDouble())
+            row.createCell(currentCol++).setCellValue((event.elapsedTime / 36).toDouble())
         }
         if (settings.showStartTime) {
-            row.createCell(currentCol++).setCellValue(formatPointInTime(point.pointStartTime))
+            row.createCell(currentCol++).setCellValue(formatEventInTime(event.eventStartTime))
         }
         if (settings.showComment) {
-            row.createCell(currentCol++).setCellValue(point.comment)
+            row.createCell(currentCol++).setCellValue(event.comment)
         }
         if (settings.showImage) {
-            val localImagePath = point.imagePath
+            val localImagePath = event.imagePath
             if (!localImagePath.isNullOrEmpty()) {
                 try {
                     val bytes = readImageBytes(context, localImagePath)
@@ -535,7 +535,7 @@ fun exportExcelFile(
             currentCol++
         }
         if (settings.showCycle) {
-            row.createCell(currentCol++).setCellValue(point.cycleNumber.toDouble())
+            row.createCell(currentCol++).setCellValue(event.cycleNumber.toDouble())
         }
     }
 
@@ -550,7 +550,7 @@ fun exportExcelFile(
         ?.let   { " - $it" }                       // " - Elevator Up"
         ?: ""                                      // nothing if null/blank
 
-    val fileName   = "exported_points_${timeStamp}$safePreset.xlsx"
+    val fileName   = "exported_events_${timeStamp}$safePreset.xlsx"
     val file       = File(exportDir, fileName)
 
     FileOutputStream(file).use { workbook.write(it) }
@@ -743,18 +743,18 @@ class CameraActivity : ComponentActivity() {
 // --- Composable Functions ---
 
 @Composable
-fun PointProgressIndicator(
+fun EventProgressIndicator(
     elapsedTime: Long,               // current elapsed time in ms
-    points: List<PointData>,         // your list of recorded points
+    events: List<EventData>,         // your list of recorded events
     modifier: Modifier = Modifier,   // ← external size will be applied here
     centerCircleRadius: Dp = 3.dp,
-    pointerLengthFraction: Float = 0.8f
+    eventerLengthFraction: Float = 0.8f
 ) {
     val colorScheme = MaterialTheme.colorScheme
 
-    // fallback to 60 s if no points
-    val maxPointTime = points.maxOfOrNull { it.elapsedTime } ?: 60000L
-    val progress     = if (maxPointTime > 0) min(elapsedTime / maxPointTime.toFloat(), 1f) else 0f
+    // fallback to 60 s if no events
+    val maxEventTime = events.maxOfOrNull { it.elapsedTime } ?: 60000L
+    val progress     = if (maxEventTime > 0) min(elapsedTime / maxEventTime.toFloat(), 1f) else 0f
 
     // Use only the passed‑in modifier — don’t override it with .size(100.dp)
 
@@ -783,11 +783,11 @@ fun PointProgressIndicator(
             radius = centerCircleRadius.toPx()
         )
 
-        // rotating pointer
-        if (pointerLengthFraction > 0f) {
-            val angleDeg = -90f + 360f * (elapsedTime / maxPointTime.toFloat())
+        // rotating eventer
+        if (eventerLengthFraction > 0f) {
+            val angleDeg = -90f + 360f * (elapsedTime / maxEventTime.toFloat())
             val angleRad = Math.toRadians(angleDeg.toDouble())
-            val length   = (size.minDimension / 2) * pointerLengthFraction
+            val length   = (size.minDimension / 2) * eventerLengthFraction
             val end = Offset(
                 x = center.x + length * cos(angleRad).toFloat(),
                 y = center.y + length * sin(angleRad).toFloat()
@@ -800,9 +800,9 @@ fun PointProgressIndicator(
             )
         }
 
-        // point ticks
-        points.forEach { point ->
-            val frac     = (point.elapsedTime / maxPointTime.toFloat()).coerceAtMost(1f)
+        // event ticks
+        events.forEach { event ->
+            val frac     = (event.elapsedTime / maxEventTime.toFloat()).coerceAtMost(1f)
             val rad      = Math.toRadians(frac * 360f - 90f.toDouble())
             val radius   = size.minDimension / 2
             val pinLen   = 8.dp.toPx()
@@ -859,20 +859,20 @@ fun ImageCaptureDialog(
 
 @OptIn(ExperimentalTextApi::class)
 @Composable
-fun PointTable(
-    points: List<PointData>,
-    currentActivePoint: PointData?,
+fun EventTable(
+    events: List<EventData>,
+    currentActiveEvent: EventData?,
     timeFormatSetting: TimeFormatSetting,
     sheetSettings: SheetSettings,
     hasPresetLoaded: Boolean,
-    onCommentClick: (PointData) -> Unit,
-    onImageClick: (PointData) -> Unit,
+    onCommentClick: (EventData) -> Unit,
+    onImageClick: (EventData) -> Unit,
     onAddCommentForLive: () -> Unit,
     onCaptureImageForLive: () -> Unit
 ) {
     /* ───── decide visible columns ───── */
     val columns = buildList {
-        if (sheetSettings.showPoint   ) add("Point")
+        if (sheetSettings.showEvent   ) add("Event")
         if (sheetSettings.showTime    ) add("Time")
         if (sheetSettings.showTMU     ) add("TMU")
         if (sheetSettings.showStartTime) add("Start Time")
@@ -886,7 +886,7 @@ fun PointTable(
 
     /* ───── PASS ① : measure natural width of every column (header + data) ───── */
     val naturalPx: List<Int> = remember(
-        points,                // already there
+        events,                // already there
         sheetSettings,         // already there
         hasPresetLoaded        //  ← NEW
     ) {
@@ -904,15 +904,15 @@ fun PointTable(
         columns.forEachIndexed { i, h -> update(i, h) }
 
         // rows
-        points.forEachIndexed { rowIdx, point ->
+        events.forEachIndexed { rowIdx, event ->
             var col = 0
-            if (sheetSettings.showPoint   ) update(col++, "#${rowIdx + 1}")
-            if (sheetSettings.showTime    ) update(col++, formatTime(point.elapsedTime, timeFormatSetting))
-            if (sheetSettings.showTMU     ) update(col++, "${(point.elapsedTime / 36).toInt()}")
-            if (sheetSettings.showStartTime) update(col++, formatPointInTime(point.pointStartTime))
-            if (sheetSettings.showComment ) update(col++, point.comment.ifBlank { "—" })
-            if (sheetSettings.showImage   ) update(col++, if (point.imagePath.isNullOrBlank()) "—" else "img")
-            if (sheetSettings.showCycle && hasPresetLoaded) update(col++, "${point.cycleNumber}")
+            if (sheetSettings.showEvent   ) update(col++, "#${rowIdx + 1}")
+            if (sheetSettings.showTime    ) update(col++, formatTime(event.elapsedTime, timeFormatSetting))
+            if (sheetSettings.showTMU     ) update(col++, "${(event.elapsedTime / 36).toInt()}")
+            if (sheetSettings.showStartTime) update(col++, formatEventInTime(event.eventStartTime))
+            if (sheetSettings.showComment ) update(col++, event.comment.ifBlank { "—" })
+            if (sheetSettings.showImage   ) update(col++, if (event.imagePath.isNullOrBlank()) "—" else "img")
+            if (sheetSettings.showCycle && hasPresetLoaded) update(col++, "${event.cycleNumber}")
         }
 
         px.toList()
@@ -949,7 +949,7 @@ fun PointTable(
 
         /* ───── data rows ───── */
         LazyColumn {
-            itemsIndexed(points.reversed()) { realIdx, point ->
+            itemsIndexed(events.reversed()) { realIdx, event ->
 
                 Row(
                     Modifier
@@ -972,22 +972,22 @@ fun PointTable(
                         col++
                     }
 
-                    if (sheetSettings.showPoint)
-                        cell("#${points.size - realIdx}")
+                    if (sheetSettings.showEvent)
+                        cell("#${events.size - realIdx}")
                     if (sheetSettings.showTime)
-                        cell(formatTime(point.elapsedTime, timeFormatSetting))
+                        cell(formatTime(event.elapsedTime, timeFormatSetting))
                     if (sheetSettings.showTMU)
-                        cell("${(point.elapsedTime / 36).toInt()}")
+                        cell("${(event.elapsedTime / 36).toInt()}")
                     if (sheetSettings.showStartTime)
-                        cell(formatPointInTime(point.pointStartTime))
+                        cell(formatEventInTime(event.eventStartTime))
                     if (sheetSettings.showComment)
                         cell(
-                            if (point.comment.isNotBlank()) point.comment else "—",
+                            if (event.comment.isNotBlank()) event.comment else "—",
                             onClick = {
-                                if (point.pointStartTime == currentActivePoint?.pointStartTime)
+                                if (event.eventStartTime == currentActiveEvent?.eventStartTime)
                                     onAddCommentForLive()
                                 else
-                                    onCommentClick(point)
+                                    onCommentClick(event)
                             }
                         )
                     if (sheetSettings.showImage) {
@@ -996,16 +996,16 @@ fun PointTable(
                             .weight(naturalDp[col].value, fill = true)   // ★ keep Image cells in the same grid
                             .padding(horizontal = 4.dp)
                             .clickable {
-                                if (point.pointStartTime == currentActivePoint?.pointStartTime)
+                                if (event.eventStartTime == currentActiveEvent?.eventStartTime)
                                     onCaptureImageForLive()
                                 else
-                                    onImageClick(point)
+                                    onImageClick(event)
                             }
 
                         Box(imgMod, contentAlignment = Alignment.Center) {
-                            if (!point.imagePath.isNullOrBlank())
+                            if (!event.imagePath.isNullOrBlank())
                                 Image(
-                                    painter = rememberAsyncImagePainter(point.imagePath),
+                                    painter = rememberAsyncImagePainter(event.imagePath),
                                     contentDescription = null,
                                     modifier = Modifier.size(48.dp)
                                 )
@@ -1015,7 +1015,7 @@ fun PointTable(
                         col++
                     }
                     if (sheetSettings.showCycle && hasPresetLoaded)
-                        cell("${point.cycleNumber}")
+                        cell("${event.cycleNumber}")
                 }
             }
         }
@@ -1026,7 +1026,7 @@ fun PointTable(
 
 @Composable
 fun GraphPreview(
-    points: List<PointData>,
+    events: List<EventData>,
     modifier: Modifier = Modifier
 ) {
     // grab your color in a composable context:
@@ -1035,17 +1035,17 @@ fun GraphPreview(
     Canvas(modifier = modifier) {
         val width = size.width
         val height = size.height
-        val numPoints = points.size
+        val numEvents = events.size
 
-        if (numPoints > 1) {
-            val maxTime = points.maxOfOrNull { it.elapsedTime } ?: 1L
-            val xStep   = width / (numPoints - 1)
+        if (numEvents > 1) {
+            val maxTime = events.maxOfOrNull { it.elapsedTime } ?: 1L
+            val xStep   = width / (numEvents - 1)
 
             val path = Path().apply {
-                moveTo(0f, height - (points[0].elapsedTime.toFloat() / maxTime) * height)
-                for (i in 1 until numPoints) {
+                moveTo(0f, height - (events[0].elapsedTime.toFloat() / maxTime) * height)
+                for (i in 1 until numEvents) {
                     val x = i * xStep
-                    val y = height - (points[i].elapsedTime.toFloat() / maxTime) * height
+                    val y = height - (events[i].elapsedTime.toFloat() / maxTime) * height
                     lineTo(x, y)
                 }
             }
@@ -1420,7 +1420,7 @@ fun CsvTable(csvContent: String, sheetSettings: SheetSettings) {
     // Determine enabled indices based on the full header.
     val enabledIndices = headerCells.mapIndexedNotNull { index, column ->
         when (column) {
-            "Point"       -> if (sheetSettings.showPoint)       index else null
+            "Event"       -> if (sheetSettings.showEvent)       index else null
             "Time"        -> if (sheetSettings.showTime)        index else null
             "TMU"         -> if (sheetSettings.showTMU)         index else null
             "Start Time"  -> if (sheetSettings.showStartTime)   index else null
@@ -1570,13 +1570,13 @@ fun SettingsScreen(
                 .padding(innerPadding)
                 .padding(16.dp)
         ) {
-            Text("Toggle columns in your Point Table:", style = MaterialTheme.typography.titleMedium)
+            Text("Toggle columns in your Event Table:", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(16.dp))
 
             SettingsRow(
-                label = "Show Point",
-                checked = sheetSettings.showPoint,
-                onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showPoint = it)) }
+                label = "Show Event",
+                checked = sheetSettings.showEvent,
+                onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showEvent = it)) }
             )
             SettingsRow(
                 label = "Show Time",
@@ -1995,7 +1995,7 @@ fun SaveShareOptionsDialog(
 fun CommentDialogUnified(
     initialComment: String,
     fastCommentsSettings: FastCommentsSettings,
-    isEditingOldPoint: Boolean,
+    isEditingOldEvent: Boolean,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
     onEditFastComments: () -> Unit
@@ -2731,14 +2731,14 @@ fun ThreePageSwipeContainer(
 fun MainScreen(
     elapsedTime: Long,
     isRunning: Boolean,
-    points: List<PointData>,
-    currentActivePoint: PointData?,
+    events: List<EventData>,
+    currentActiveEvent: EventData?,
     timeFormatSetting: TimeFormatSetting,
     sheetSettings: SheetSettings,
     activeDialog: ActiveDialog,
     onActiveDialogChange: (ActiveDialog) -> Unit,
     onToggleStopwatch: () -> Unit,
-    onNewPoint: () -> Unit,
+    onNewEvent: () -> Unit,
     isDirty: Boolean,
     onResetRequest: () -> Unit,
     onPrepareSaveShare: () -> Unit,
@@ -2751,9 +2751,9 @@ fun MainScreen(
     onEditFastComments: () -> Unit,
     onUndo: () -> Unit,
     fastCommentsSettings: FastCommentsSettings,
-    onImageClick: (PointData) -> Unit,
-    onUpdatePointImage: (PointData, String) -> Unit,
-    onUpdatePointComment: (PointData, String) -> Unit,
+    onImageClick: (EventData) -> Unit,
+    onUpdateEventImage: (EventData, String) -> Unit,
+    onUpdateEventComment: (EventData, String) -> Unit,
     onToggleImageColumn: () -> Unit,
     onToggleCommentColumn: () -> Unit,
     activeCycle: ActiveCycle?,
@@ -2783,36 +2783,36 @@ fun MainScreen(
         if (showTipsPref) showTipsDialog = true
     }
 
-    var selectedPointForComment by remember { mutableStateOf<PointData?>(null) }
-    var selectedPointForImage by remember { mutableStateOf<PointData?>(null) }
+    var selectedEventForComment by remember { mutableStateOf<EventData?>(null) }
+    var selectedEventForImage by remember { mutableStateOf<EventData?>(null) }
     var currentPage by remember { mutableStateOf(1) }    // start in middle
 
-    val maxTime      = points.maxOfOrNull { it.elapsedTime } ?: 60000L
-    val medianTime   = calculateMedian(points.map { it.elapsedTime })
-    val stdDevTime   = calculateStdDev(points.map { it.elapsedTime })
-    val averageTime  = points.map { it.elapsedTime }.average().toLong()
-    val minTime   = points.minOfOrNull { it.elapsedTime } ?: 0L
+    val maxTime      = events.maxOfOrNull { it.elapsedTime } ?: 60000L
+    val medianTime   = calculateMedian(events.map { it.elapsedTime })
+    val stdDevTime   = calculateStdDev(events.map { it.elapsedTime })
+    val averageTime  = events.map { it.elapsedTime }.average().toLong()
+    val minTime   = events.minOfOrNull { it.elapsedTime } ?: 0L
     val rangeTime = maxTime - minTime         // max − min, always ≥ 0
 
 
-    val displayPoints by remember(points, currentActivePoint?.pointStartTime, currentActivePoint?.elapsedTime, isRunning) {
+    val displayEvents by remember(events, currentActiveEvent?.eventStartTime, currentActiveEvent?.elapsedTime, isRunning) {
         derivedStateOf {
-            currentActivePoint?.let { live ->
-                if (points.none { it.pointStartTime == live.pointStartTime } &&
+            currentActiveEvent?.let { live ->
+                if (events.none { it.eventStartTime == live.eventStartTime } &&
                     (live.elapsedTime > 0L || !isRunning)
                 ) {
-                    points + live
-                } else points
-            } ?: points
+                    events + live
+                } else events
+            } ?: events
         }
     }
 
-    // only rebuild when points or the elapsed‐time of the live point changes
-    val allPoints = buildList<PointData> {
-        addAll(points)
-        currentActivePoint?.takeIf { live ->
-            // only include the live point if it’s not already in points
-            points.none { it.pointStartTime == live.pointStartTime } &&
+    // only rebuild when events or the elapsed‐time of the live event changes
+    val allEvents = buildList<EventData> {
+        addAll(events)
+        currentActiveEvent?.takeIf { live ->
+            // only include the live event if it’s not already in events
+            events.none { it.eventStartTime == live.eventStartTime } &&
                     // and either some time has elapsed or we’re paused
                     (live.elapsedTime > 0L || !isRunning)
         }?.let { add(it) }
@@ -2863,7 +2863,7 @@ fun MainScreen(
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Undo, "Undo")
                     Spacer(Modifier.width(8.dp))
-                    Text("Undo last point", style = MaterialTheme.typography.bodyMedium)
+                    Text("Undo last event", style = MaterialTheme.typography.bodyMedium)
                 }
                 Spacer(Modifier.weight(1f))
                 // dots
@@ -2910,15 +2910,15 @@ fun MainScreen(
                                 modifier = Modifier.size(150.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                PointProgressIndicator(
+                                EventProgressIndicator(
                                     elapsedTime           = elapsedTime,
-                                    points                = displayPoints,
+                                    events                = displayEvents,
                                     centerCircleRadius    = 0.dp,
-                                    pointerLengthFraction = 0f,
+                                    eventerLengthFraction = 0f,
                                     modifier              = Modifier.matchParentSize()
                                 )
 
-                                val displayCount = displayPoints.size
+                                val displayCount = displayEvents.size
                                 val counterText = if (displayCount > 0) "#$displayCount" else ""
 
                                 Text(
@@ -2958,9 +2958,9 @@ fun MainScreen(
                                 TouchVolumeButton(
                                     icon            = Icons.Filled.Timer,
                                     label           = "",
-                                    tapInstruction  = "New Point",
+                                    tapInstruction  = "New Event",
                                     holdInstruction = "Reset",
-                                    onTap           = onNewPoint,
+                                    onTap           = onNewEvent,
                                     onLongPress     = onResetRequest,
                                     backgroundColor = MaterialTheme.colorScheme.surface,
                                     iconTint        = MaterialTheme.colorScheme.onBackground,
@@ -2981,7 +2981,7 @@ fun MainScreen(
                         }
                     },
 
-                    // ─── PAGE 1: PPI + timer + play/reset row + camera/comment row + point‑table ───
+                    // ─── PAGE 1: PPI + timer + play/reset row + camera/comment row + event‑table ───
 
                     {
                         Box(modifier = Modifier.fillMaxSize()) {
@@ -3025,11 +3025,11 @@ fun MainScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Box(Modifier.size(120.dp)) {
-                                                PointProgressIndicator(
+                                                EventProgressIndicator(
                                                     elapsedTime           = elapsedTime,
-                                                    points                = displayPoints,
+                                                    events                = displayEvents,
                                                     centerCircleRadius    = 3.dp,
-                                                    pointerLengthFraction = 0.8f,
+                                                    eventerLengthFraction = 0.8f,
                                                     modifier              = Modifier.matchParentSize()
                                                 )
                                             }
@@ -3044,11 +3044,11 @@ fun MainScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Box(Modifier.size(120.dp)) {
-                                                PointProgressIndicator(
+                                                EventProgressIndicator(
                                                     elapsedTime           = elapsedTime,
-                                                    points                = displayPoints,
+                                                    events                = displayEvents,
                                                     centerCircleRadius    = 3.dp,
-                                                    pointerLengthFraction = 0.8f,
+                                                    eventerLengthFraction = 0.8f,
                                                     modifier              = Modifier.matchParentSize()
                                                 )
                                             }
@@ -3065,7 +3065,7 @@ fun MainScreen(
 
                                 Spacer(Modifier.height(12.dp))
 
-                                // ── PLAY/PAUSE  |  NEW POINT buttons under PPI ──
+                                // ── PLAY/PAUSE  |  NEW EVENT buttons under PPI ──
                                 Row(
                                     Modifier
                                         .fillMaxWidth(),
@@ -3086,13 +3086,13 @@ fun MainScreen(
                                             .padding(8.dp)
                                     )
 
-                                    // ─── New Point ───
+                                    // ─── New Event ───
                                     TouchVolumeButton(
                                         icon            = Icons.Filled.Timer,
                                         label           = "",
-                                        tapInstruction  = "New Point",
+                                        tapInstruction  = "New Event",
                                         holdInstruction = "Reset",
-                                        onTap           = onNewPoint,
+                                        onTap           = onNewEvent,
                                         onLongPress     = onResetRequest,
                                         backgroundColor = MaterialTheme.colorScheme.surface,
                                         iconTint        = MaterialTheme.colorScheme.onBackground,
@@ -3199,14 +3199,14 @@ fun MainScreen(
 
                                 Spacer(Modifier.height(12.dp))
 
-                                // ── POINT TABLE ──
-                                PointTable(
-                                    points = allPoints,
-                                    currentActivePoint = currentActivePoint,
+                                // ── EVENT TABLE ──
+                                EventTable(
+                                    events = allEvents,
+                                    currentActiveEvent = currentActiveEvent,
                                     timeFormatSetting = timeFormatSetting,
                                     sheetSettings = sheetSettings,
                                     hasPresetLoaded      = activeCycle != null,
-                                    onCommentClick = { selectedPointForComment = it },
+                                    onCommentClick = { selectedEventForComment = it },
                                     onImageClick = { onImageClick(it) },
                                     onAddCommentForLive = onAddComment,
                                     onCaptureImageForLive = onCaptureImage,
@@ -3225,7 +3225,7 @@ fun MainScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             GraphPreview(
-                                points = displayPoints,
+                                events = displayEvents,
                                 modifier = Modifier
                                     .fillMaxWidth()                           // now full width
                                     .padding(horizontal = 16.dp)              // horizontal inset only for the graph
@@ -3273,13 +3273,13 @@ fun MainScreen(
 
 
                             Spacer(Modifier.height(12.dp))
-                            PointTable(
-                                points = allPoints,
-                                currentActivePoint    = currentActivePoint,
+                            EventTable(
+                                events = allEvents,
+                                currentActiveEvent    = currentActiveEvent,
                                 timeFormatSetting     = timeFormatSetting,
                                 sheetSettings         = sheetSettings,
                                 hasPresetLoaded      = activeCycle != null,
-                                onCommentClick        = { selectedPointForComment = it },
+                                onCommentClick        = { selectedEventForComment = it },
                                 onImageClick          = { onImageClick(it) },
                                 onAddCommentForLive   = onAddComment,
                                 onCaptureImageForLive = onCaptureImage,
@@ -3335,27 +3335,27 @@ fun MainScreen(
         else -> { }
     }
 
-    selectedPointForComment?.let { point ->
+    selectedEventForComment?.let { event ->
         CommentDialogUnified(
-            initialComment = point.comment,
+            initialComment = event.comment,
             fastCommentsSettings = fastCommentsSettings,
-            isEditingOldPoint = true,
+            isEditingOldEvent = true,
             onConfirm = { newComment ->
-                onUpdatePointComment(point, newComment)
-                selectedPointForComment = null
+                onUpdateEventComment(event, newComment)
+                selectedEventForComment = null
             },
-            onDismiss = { selectedPointForComment = null },
+            onDismiss = { selectedEventForComment = null },
             onEditFastComments   = onEditFastComments
         )
     }
 
-    selectedPointForImage?.let {
+    selectedEventForImage?.let {
         ImageCaptureDialog(
             onCapture = {
                 onCaptureImage()
-                selectedPointForImage = null
+                selectedEventForImage = null
             },
-            onDismiss = { selectedPointForImage = null }
+            onDismiss = { selectedEventForImage = null }
         )
     }
     // inside MainScreen – or wherever you show the tips dialog
@@ -3367,7 +3367,7 @@ fun MainScreen(
             text  = {
                 Column {
                     Text("• Tap the info icon any time to see this guide again.")
-                    Text("• Use the volume buttons to Play/Pause or add a New-Point (tap vs. hold).")
+                    Text("• Use the volume buttons to Play/Pause or add a New-Event (tap vs. hold).")
                     Text("• Swipe left / right for the three main views.")
                     Text("• Tweak the layout in Settings to match your workflow.")
                     Text("• Saved Files lets you filter, view, delete or export to Excel.")
@@ -3441,13 +3441,13 @@ class MainActivity : ComponentActivity() {
 
     private var isDirty by mutableStateOf(false)
 
-    private var currentActivePoint by mutableStateOf<PointData?>(null)
+    private var currentActiveEvent by mutableStateOf<EventData?>(null)
 
     private lateinit var cameraResultLauncher: ActivityResultLauncher<Intent>
 
     private val REQUEST_CODE_CAMERA_PERMISSION = 1001
 
-    private var pendingImageUpdatePoint: PointData? = null
+    private var pendingImageUpdateEvent: EventData? = null
 
     private var fbShowCsv by mutableStateOf(true)
     private var fbShowImages by mutableStateOf(false)
@@ -3542,16 +3542,16 @@ class MainActivity : ComponentActivity() {
     private var startTime: Long = 0L
     private var accumulatedTime: Long = 0L
 
-    // Current Point start.
-    private var currentPointStartTime: Long = 0L
+    // Current Event start.
+    private var currentEventStartTime: Long = 0L
 
     // Elapsed time state.
     private val _elapsedTime = mutableStateOf(0L)
     val elapsedTime: State<Long> = _elapsedTime
 
-    // List of Points.
-    private val _points = mutableStateListOf<PointData>()
-    val points: List<PointData> get() = _points
+    // List of Events.
+    private val _events = mutableStateListOf<EventData>()
+    val events: List<EventData> get() = _events
 
     // Volume key tracking.
     private var volumeDownPressStart: Long = 0L
@@ -3585,7 +3585,7 @@ class MainActivity : ComponentActivity() {
             counter++
         }
 
-        val csvContent = generateCSV(points, sheetSettings, currentTimeFormatSetting)
+        val csvContent = generateCSV(events, sheetSettings, currentTimeFormatSetting)
         Log.d("DEBUG", "CSV Content:\n$csvContent")  // Log CSV content for debug if needed.
         file.outputStream().use {
             it.write(csvContent.toByteArray())
@@ -3668,21 +3668,21 @@ class MainActivity : ComponentActivity() {
 
 
 
-    private fun undoLastPoint() {
-        if (_points.isNotEmpty()) {
-            // Remove the latest recorded point
-            val removed = _points.removeAt(_points.lastIndex)
+    private fun undoLastEvent() {
+        if (_events.isNotEmpty()) {
+            // Remove the latest recorded event
+            val removed = _events.removeAt(_events.lastIndex)
             // Add its elapsed time back to the accumulated time
             accumulatedTime += removed.elapsedTime
-            // Update the UI: if the stopwatch is running, update the active point; if not, update the displayed time
+            // Update the UI: if the stopwatch is running, update the active event; if not, update the displayed time
             if (_isRunning.value) {
-                currentActivePoint?.elapsedTime = (currentActivePoint?.elapsedTime ?: 0L) + removed.elapsedTime
+                currentActiveEvent?.elapsedTime = (currentActiveEvent?.elapsedTime ?: 0L) + removed.elapsedTime
             } else {
                 _elapsedTime.value = accumulatedTime
             }
-            ToastHelper.showToast(this, "Last point undone", 1000L)
+            ToastHelper.showToast(this, "Last event undone", 1000L)
         } else {
-            Toast.makeText(this, "No point to undo", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No event to undo", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -3695,7 +3695,7 @@ class MainActivity : ComponentActivity() {
         // 2. Craft the SEND intent
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
             type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            putExtra(Intent.EXTRA_SUBJECT, "Exported Points")
+            putExtra(Intent.EXTRA_SUBJECT, "Exported Events")
             putExtra(Intent.EXTRA_STREAM,  uri)
 
             // Required on API 24+ so the receiving app can actually read the URI
@@ -3817,23 +3817,23 @@ class MainActivity : ComponentActivity() {
                 if (result.resultCode == RESULT_OK) {
                     val imagePath = result.data?.getStringExtra("imagePath") ?: return@registerForActivityResult
 
-                    if (pendingImageUpdatePoint != null) {
-                        // old point case
-                        val live = pendingImageUpdatePoint!!
-                        val idx  = _points.indexOf(live)
+                    if (pendingImageUpdateEvent != null) {
+                        // old event case
+                        val live = pendingImageUpdateEvent!!
+                        val idx  = _events.indexOf(live)
                         if (idx != -1) {
-                            _points[idx] = live.copy(imagePath = "file://$imagePath")
+                            _events[idx] = live.copy(imagePath = "file://$imagePath")
                         }
-                        pendingImageUpdatePoint = null
+                        pendingImageUpdateEvent = null
 
-                    } else if (currentActivePoint != null) {
-                        // paused live point case
-                        currentActivePoint = currentActivePoint!!.copy(imagePath = "file://$imagePath")
+                    } else if (currentActiveEvent != null) {
+                        // paused live event case
+                        currentActiveEvent = currentActiveEvent!!.copy(imagePath = "file://$imagePath")
 
-                    } else if (_points.isNotEmpty()) {
-                        // fallback: last historical point
-                        val last = _points.last()
-                        _points[_points.lastIndex] = last.copy(imagePath = "file://$imagePath")
+                    } else if (_events.isNotEmpty()) {
+                        // fallback: last historical event
+                        val last = _events.last()
+                        _events[_events.lastIndex] = last.copy(imagePath = "file://$imagePath")
                     }
                 }
             }
@@ -3912,9 +3912,9 @@ class MainActivity : ComponentActivity() {
                     csvDir.mkdirs()
                 }
 
-                // Regenerate CSV content whenever points, sheet settings, or the time format setting change.
-                val csvContent by remember(points, currentSheetSettings, timeFormatSetting) {
-                    derivedStateOf { generateCSV(points, currentSheetSettings, timeFormatSetting) }
+                // Regenerate CSV content whenever events, sheet settings, or the time format setting change.
+                val csvContent by remember(events, currentSheetSettings, timeFormatSetting) {
+                    derivedStateOf { generateCSV(events, currentSheetSettings, timeFormatSetting) }
                 }
                 Log.d("CSVContent", csvContent)
 
@@ -3937,11 +3937,11 @@ class MainActivity : ComponentActivity() {
                             MainScreen(
                                 elapsedTime = elapsedTime.value,
                                 isRunning = isRunning.value,
-                                points = if (isRunning.value && currentActivePoint != null)
-                                    points + currentActivePoint!!
+                                events = if (isRunning.value && currentActiveEvent != null)
+                                    events + currentActiveEvent!!
                                 else
-                                    points,
-                                currentActivePoint = currentActivePoint,
+                                    events,
+                                currentActiveEvent = currentActiveEvent,
                                 timeFormatSetting = timeFormatSetting,
                                 sheetSettings = currentSheetSettings,
                                 activeDialog = activeDialog,
@@ -3949,7 +3949,7 @@ class MainActivity : ComponentActivity() {
 
                                 onActiveDialogChange = { activeDialog = it },
                                 onToggleStopwatch = { toggleStopwatch(); isDirty = true },
-                                onNewPoint = { newPoint(); isDirty = true },
+                                onNewEvent = { newEvent(); isDirty = true },
                                 onResetRequest = {
                                     if (isDirty) activeDialog = ActiveDialog.ConfirmReset
                                     else resetStopwatch()
@@ -3957,7 +3957,7 @@ class MainActivity : ComponentActivity() {
                                 onFileBrowserClick = { currentScreen = Screen.FileBrowser },
                                 onSettingsClick = { currentScreen = Screen.Settings },
                                 onPrepareSaveShare = {
-                                    pendingCsvContent = generateCSV(points, sheetSettings, currentTimeFormatSetting)
+                                    pendingCsvContent = generateCSV(events, sheetSettings, currentTimeFormatSetting)
                                     activeDialog = ActiveDialog.SaveShare
                                 },
                                 onShare = { sendEmail() },
@@ -3965,7 +3965,7 @@ class MainActivity : ComponentActivity() {
                                 onCaptureImage = { captureImage() },
                                 onAddComment = { showCommentDialog = true },
                                 onEditFastComments = { showCommentDialog = false; showFastCommentsEditDialog = true },
-                                onUndo = { undoLastPoint(); isDirty = true },
+                                onUndo = { undoLastEvent(); isDirty = true },
 
                                 fastCommentsSettings = currentFastComments,
 
@@ -3980,25 +3980,25 @@ class MainActivity : ComponentActivity() {
                                     CoroutineScope(Dispatchers.IO).launch { saveSheetSettings(context, new) }
                                 },
 
-                                onImageClick = { point ->
-                                    pendingImageUpdatePoint = point
+                                onImageClick = { event ->
+                                    pendingImageUpdateEvent = event
                                     showImageUpdateDialog = true
                                 },
-                                onUpdatePointComment = { point, newComment ->
-                                    val idx = _points.indexOf(point)
+                                onUpdateEventComment = { event, newComment ->
+                                    val idx = _events.indexOf(event)
                                     if (idx != -1) {
-                                        _points[idx] = point.copy(comment = newComment)
-                                    } else if (currentActivePoint?.pointStartTime == point.pointStartTime) {
-                                        currentActivePoint = point.copy(comment = newComment)
+                                        _events[idx] = event.copy(comment = newComment)
+                                    } else if (currentActiveEvent?.eventStartTime == event.eventStartTime) {
+                                        currentActiveEvent = event.copy(comment = newComment)
                                     }
                                     isDirty = true
                                 },
-                                onUpdatePointImage = { point, newPath ->
-                                    val idx = _points.indexOf(point)
+                                onUpdateEventImage = { event, newPath ->
+                                    val idx = _events.indexOf(event)
                                     if (idx != -1) {
-                                        _points[idx] = point.copy(imagePath = newPath)
-                                    } else if (currentActivePoint?.pointStartTime == point.pointStartTime) {
-                                        currentActivePoint = point.copy(imagePath = newPath)
+                                        _events[idx] = event.copy(imagePath = newPath)
+                                    } else if (currentActiveEvent?.eventStartTime == event.eventStartTime) {
+                                        currentActiveEvent = event.copy(imagePath = newPath)
                                     }
                                     isDirty = true
                                 },
@@ -4008,7 +4008,7 @@ class MainActivity : ComponentActivity() {
 
                                 onLoadCycle = { chosen ->
                                     activeCycle = ActiveCycle(chosen, 0)   // index starts at 0
-                                    // no changes to currentActivePoint here
+                                    // no changes to currentActiveEvent here
                                 },
                                 onSaveAllCycles = { updatedList ->
                                     // Write back the updated list of presets
@@ -4098,26 +4098,26 @@ class MainActivity : ComponentActivity() {
                             },
                             onDismiss = {
                                 showImageUpdateDialog = false
-                                pendingImageUpdatePoint = null
+                                pendingImageUpdateEvent = null
                             }
                         )
                     }
                     if (showCommentDialog) {
                         CommentDialogUnified(
-                            initialComment       = currentActivePoint?.comment.orEmpty(),
+                            initialComment       = currentActiveEvent?.comment.orEmpty(),
                             fastCommentsSettings = currentFastComments,
-                            isEditingOldPoint    = false,
+                            isEditingOldEvent    = false,
                             onConfirm = { newComment ->
-                                currentActivePoint?.let { live ->
-                                    val idx = _points.indexOf(live)
+                                currentActiveEvent?.let { live ->
+                                    val idx = _events.indexOf(live)
                                     val updatedComment = newComment
 
                                     if (idx != -1) {
-                                        // historical point (unlikely here)
-                                        _points[idx] = live.copy(comment = updatedComment)
+                                        // historical event (unlikely here)
+                                        _events[idx] = live.copy(comment = updatedComment)
                                     } else {
-                                        // paused “live” point
-                                        currentActivePoint = live.copy(comment = updatedComment)
+                                        // paused “live” event
+                                        currentActiveEvent = live.copy(comment = updatedComment)
                                     }
                                 }
                                 showCommentDialog = false
@@ -4345,7 +4345,7 @@ class MainActivity : ComponentActivity() {
             KeyEvent.KEYCODE_VOLUME_UP -> {
                 val pressDuration = System.currentTimeMillis() - volumeUpPressStart
                 if (pressDuration >= 500) {
-                    pendingCsvContent = generateCSV(points, sheetSettings, currentTimeFormatSetting)
+                    pendingCsvContent = generateCSV(events, sheetSettings, currentTimeFormatSetting)
                     Log.d("CSVContent", pendingCsvContent ?: "null")
                     activeDialog = ActiveDialog.SaveShare
                 } else {
@@ -4363,7 +4363,7 @@ class MainActivity : ComponentActivity() {
                         resetStopwatch()                           // nothing to lose
                     }
                 } else {                           // ── short-press ──
-                    newPoint()                     // add a point
+                    newEvent()                     // add a event
                     isDirty = true                 // mark sheet as changed
                 }
                 return true
@@ -4390,10 +4390,10 @@ class MainActivity : ComponentActivity() {
         if (!_isRunning.value) {
             _isRunning.value = true
             if (accumulatedTime == 0L) {
-                currentPointStartTime = System.currentTimeMillis()
-                currentActivePoint = PointData(
+                currentEventStartTime = System.currentTimeMillis()
+                currentActiveEvent = EventData(
                     elapsedTime    = 0L,
-                    pointStartTime = currentPointStartTime,
+                    eventStartTime = currentEventStartTime,
                     cycleNumber    = currentCycleNumber
                 )
 
@@ -4406,19 +4406,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun newPoint() {
+    private fun newEvent() {
 
         // 0 ── make sure the watch is running
         if (!_isRunning.value) toggleStopwatch()
 
         val now = System.currentTimeMillis()
 
-        // 1 ── if we have no live point yet, create one immediately
-        if (currentActivePoint == null) {
-            currentPointStartTime = now
-            currentActivePoint = PointData(
+        // 1 ── if we have no live event yet, create one immediately
+        if (currentActiveEvent == null) {
+            currentEventStartTime = now
+            currentActiveEvent = EventData(
                 elapsedTime    = 0L,
-                pointStartTime = currentPointStartTime,
+                eventStartTime = currentEventStartTime,
                 cycleNumber    = currentCycleNumber
             )
         }
@@ -4427,35 +4427,35 @@ class MainActivity : ComponentActivity() {
         if (_elapsedTime.value == 0L) {
             activeCycle?.let { cycle ->
                 cycle.preset.steps.getOrNull(cycle.currentIndex)?.let { step ->
-                    currentActivePoint?.comment = step
+                    currentActiveEvent?.comment = step
                     activeCycle = cycle.copy(currentIndex = cycle.currentIndex + 1)
                 }
             }
             return
         }
 
-        // 3 ── commit the previous live point **only if it had real duration**
-        currentActivePoint?.let { live ->
-            if (live.elapsedTime > 50L) {        // <── guard-rail phantom point "0.00"
-                _points.add(live)
+        // 3 ── commit the previous live event **only if it had real duration**
+        currentActiveEvent?.let { live ->
+            if (live.elapsedTime > 50L) {        // <── guard-rail phantom event "0.00"
+                _events.add(live)
             }
         }
 
-        // 4 ── start a fresh live point
+        // 4 ── start a fresh live event
         startTime         = now
         accumulatedTime   = 0L
         _elapsedTime.value= 0L
-        currentPointStartTime = now
-        currentActivePoint = PointData(
+        currentEventStartTime = now
+        currentActiveEvent = EventData(
             elapsedTime    = 0L,
-            pointStartTime = currentPointStartTime,
+            eventStartTime = currentEventStartTime,
             cycleNumber    = currentCycleNumber
         )
 
         // 5 ── stamp the next preset step, if any
         activeCycle?.let { cycle ->
             cycle.preset.steps.getOrNull(cycle.currentIndex)?.let { step ->
-                currentActivePoint = currentActivePoint!!.copy(comment = step)
+                currentActiveEvent = currentActiveEvent!!.copy(comment = step)
                 activeCycle = cycle.copy(currentIndex = cycle.currentIndex + 1)
             }
         }
@@ -4466,8 +4466,8 @@ class MainActivity : ComponentActivity() {
         _isRunning.value = false
         accumulatedTime = 0L
         _elapsedTime.value = 0L
-        _points.clear()
-        currentActivePoint = null
+        _events.clear()
+        currentActiveEvent = null
         currentCycleNumber = 1                 // start counting cycles from 1 again
         activeCycle = activeCycle?.copy(currentIndex = 0)   // rewind preset (if one is loaded)
     }
@@ -4477,7 +4477,7 @@ class MainActivity : ComponentActivity() {
             while (_isRunning.value) {
                 val now = System.currentTimeMillis()
                 _elapsedTime.value = accumulatedTime + (now - startTime)
-                currentActivePoint?.elapsedTime = _elapsedTime.value
+                currentActiveEvent?.elapsedTime = _elapsedTime.value
                 delay(100)
             }
         }
@@ -4486,7 +4486,7 @@ class MainActivity : ComponentActivity() {
     private fun exportExcelFileAndShare() {
         val exportedFile = exportExcelFile(
             context             = this,
-            points              = points,
+            events              = events,
             settings            = sheetSettings,
             timeFormatSetting   = currentTimeFormatSetting,
             presetName        = activeCycle?.preset?.name
@@ -4503,7 +4503,7 @@ class MainActivity : ComponentActivity() {
         shareExcelFile(exportedFile)
     }
     private fun sendEmail() {
-        val csvContent = generateCSV(points, sheetSettings, currentTimeFormatSetting)
+        val csvContent = generateCSV(events, sheetSettings, currentTimeFormatSetting)
         val emailIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, "Recorded Time Measurements")

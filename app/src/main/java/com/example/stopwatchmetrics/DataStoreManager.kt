@@ -62,7 +62,7 @@ fun readShowTips(context: Context): Flow<Boolean> =
 // ───────────────────────────────
 // SheetSettings Keys & Helpers (already existed)
 // ───────────────────────────────
-private val SHOW_POINT_KEY      = booleanPreferencesKey("show_point")
+private val SHOW_EVENT_KEY      = booleanPreferencesKey("show_event")
 private val SHOW_TIME_KEY       = booleanPreferencesKey("show_time")
 private val SHOW_TMU_KEY        = booleanPreferencesKey("show_tmu")
 private val SHOW_START_TIME_KEY = booleanPreferencesKey("show_start_time")
@@ -71,7 +71,7 @@ private val SHOW_IMAGE_KEY      = booleanPreferencesKey("show_image")
 private val KEY_SHOW_CYCLE = booleanPreferencesKey("show_cycle")
 
 data class SheetSettings(
-    val showPoint: Boolean = true,
+    val showEvent: Boolean = true,
     val showTime: Boolean = true,
     val showTMU: Boolean = false,
     val showStartTime: Boolean = true,
@@ -83,7 +83,7 @@ data class SheetSettings(
 
 suspend fun saveSheetSettings(context: Context, sheetSettings: SheetSettings) {
     context.dataStore.edit { prefs ->
-        prefs[SHOW_POINT_KEY]       = sheetSettings.showPoint
+        prefs[SHOW_EVENT_KEY]       = sheetSettings.showEvent
         prefs[SHOW_TIME_KEY]        = sheetSettings.showTime
         prefs[SHOW_TMU_KEY]         = sheetSettings.showTMU
         prefs[SHOW_START_TIME_KEY]  = sheetSettings.showStartTime
@@ -96,7 +96,7 @@ suspend fun saveSheetSettings(context: Context, sheetSettings: SheetSettings) {
 fun readSheetSettings(context: Context): Flow<SheetSettings> =
     context.dataStore.data.map { prefs ->
         SheetSettings(
-            showPoint     = prefs[SHOW_POINT_KEY]       ?: true,
+            showEvent     = prefs[SHOW_EVENT_KEY]       ?: true,
             showTime      = prefs[SHOW_TIME_KEY]        ?: true,
             showTMU       = prefs[SHOW_TMU_KEY]         ?: false,
             showStartTime = prefs[SHOW_START_TIME_KEY]  ?: true,
