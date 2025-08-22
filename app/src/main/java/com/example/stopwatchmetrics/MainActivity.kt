@@ -225,7 +225,7 @@ fun generateCSV(
     /* ── 1 . add the header ────────────────────────────────────────── */
     val allHeaders = listOf(
         "Event",
-        "Time",
+        "Elapsed Time",
         "TMU",
         "Start Time",
         "Comment",
@@ -237,7 +237,7 @@ fun generateCSV(
     val enabledHeaders = allHeaders.filter { header ->
         when (header) {
             "Event"       -> settings.showEvent
-            "Time"        -> settings.showTime
+            "Elapsed Time"        -> settings.showTime
             "TMU"         -> settings.showTMU
             "Start Time"  -> settings.showStartTime
             "Comment"     -> settings.showComment
@@ -440,7 +440,7 @@ fun exportExcelFile(
     val headerRow = sheet.createRow(0)
 
     if (settings.showEvent) headerRow.createCell(colIndex++).setCellValue("Event")
-    if (settings.showTime) headerRow.createCell(colIndex++).setCellValue("Time")
+    if (settings.showTime) headerRow.createCell(colIndex++).setCellValue("Elapsed Time")
     if (settings.showTMU) headerRow.createCell(colIndex++).setCellValue("TMU")
     if (settings.showStartTime) headerRow.createCell(colIndex++).setCellValue("Start Time")
     if (settings.showComment) headerRow.createCell(colIndex++).setCellValue("Comment")
@@ -873,7 +873,7 @@ fun EventTable(
     /* ───── decide visible columns ───── */
     val columns = buildList {
         if (sheetSettings.showEvent   ) add("Event")
-        if (sheetSettings.showTime    ) add("Time")
+        if (sheetSettings.showTime    ) add("Elapsed Time")
         if (sheetSettings.showTMU     ) add("TMU")
         if (sheetSettings.showStartTime) add("Start Time")
         if (sheetSettings.showComment ) add("Comment")
@@ -1421,7 +1421,7 @@ fun CsvTable(csvContent: String, sheetSettings: SheetSettings) {
     val enabledIndices = headerCells.mapIndexedNotNull { index, column ->
         when (column) {
             "Event"       -> if (sheetSettings.showEvent)       index else null
-            "Time"        -> if (sheetSettings.showTime)        index else null
+            "Elapsed Time"        -> if (sheetSettings.showTime)        index else null
             "TMU"         -> if (sheetSettings.showTMU)         index else null
             "Start Time"  -> if (sheetSettings.showStartTime)   index else null
             "Comment"     -> if (sheetSettings.showComment)     index else null
@@ -1579,7 +1579,7 @@ fun SettingsScreen(
                 onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showEvent = it)) }
             )
             SettingsRow(
-                label = "Show Time",
+                label = "Show Elapsed Time",
                 checked = sheetSettings.showTime,
                 onCheckedChange = { onSheetSettingsChange(sheetSettings.copy(showTime = it)) }
             )

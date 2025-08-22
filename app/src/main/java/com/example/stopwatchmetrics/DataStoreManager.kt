@@ -156,7 +156,7 @@ fun readDarkModeSetting(context: Context): Flow<Boolean> =
 
 
 // ───────────────────────────────
-// NEW: PresetCycle Persistance
+// PresetCycle Persistance
 // ───────────────────────────────
 //
 // We map each PresetCycle(name, steps) ↔ a single String: "name::step1|step2|step3".
